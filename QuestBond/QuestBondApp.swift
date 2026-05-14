@@ -849,9 +849,9 @@ struct OnboardingView: View {
                 }
 
                 VStack(spacing: 12) {
-                    OnboardingPoint(icon: "rectangle.stack.person.crop", title: "Discover", text: "Browse groups or parties by fit score and filters.")
-                    OnboardingPoint(icon: "plus.circle", title: "Start another search", text: "Use the plus button when you want a new setup with different roles, schedule, or style.")
-                    OnboardingPoint(icon: "bubble.left.and.bubble.right", title: "Chat after connecting", text: "Ask Session Zero questions before committing to a table.")
+                    OnboardingPoint(icon: "rectangle.stack.person.crop", title: "Discover", text: "Browse groups or players by fit score.")
+                    OnboardingPoint(icon: "plus.circle", title: "Start another search", text: "Use + for different roles, schedules, or styles.")
+                    OnboardingPoint(icon: "bubble.left.and.bubble.right", title: "Chat after connecting", text: "Ask Session Zero questions first.")
                 }
 
                 Spacer()
