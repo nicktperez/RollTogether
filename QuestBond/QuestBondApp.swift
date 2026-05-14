@@ -1997,6 +1997,14 @@ struct MoreView: View {
                     }
                 }
 
+                Section("Backend Readiness") {
+                    NavigationLink {
+                        ServiceRoadmapView()
+                    } label: {
+                        Label("Services & Data Model", systemImage: "server.rack")
+                    }
+                }
+
                 Section("Help") {
                     Button {
                         hasCompletedOnboarding = false
@@ -2024,6 +2032,76 @@ struct MoreView: View {
                 Text("This removes local profile data, listings, matches, chats, and decisions from this device. Backend deletion will be wired when Supabase auth is connected.")
             }
         }
+    }
+}
+
+struct ServiceRoadmapView: View {
+    private let usefulServices = [
+        RoadmapItem(name: "Apple Push Notifications", detail: "new match and message alerts", icon: "bell.badge"),
+        RoadmapItem(name: "MapKit / Location Autocomplete", detail: "in-person group discovery", icon: "map"),
+        RoadmapItem(name: "OpenAI Moderation", detail: "message and profile safety checks", icon: "checkmark.shield"),
+        RoadmapItem(name: "Sentry", detail: "crash and error tracking", icon: "waveform.path.ecg"),
+        RoadmapItem(name: "RevenueCat", detail: "subscriptions for premium filters or boosts", icon: "creditcard"),
+        RoadmapItem(name: "Cloudflare Turnstile", detail: "abuse protection when spam appears", icon: "lock.shield")
+    ]
+
+    private let dataModel = [
+        RoadmapItem(name: "users", detail: "account identity", icon: "person"),
+        RoadmapItem(name: "profiles", detail: "display name, avatar, bio, location, experience, preferences", icon: "person.text.rectangle"),
+        RoadmapItem(name: "listings", detail: "group or party listing", icon: "list.bullet.rectangle"),
+        RoadmapItem(name: "listing_roles", detail: "desired or covered roles", icon: "tag"),
+        RoadmapItem(name: "swipes", detail: "pass/connect decisions", icon: "hand.tap"),
+        RoadmapItem(name: "matches", detail: "confirmed pairings", icon: "link"),
+        RoadmapItem(name: "messages", detail: "chat messages", icon: "message"),
+        RoadmapItem(name: "message_threads", detail: "one per match", icon: "bubble.left.and.bubble.right"),
+        RoadmapItem(name: "reports", detail: "safety reports", icon: "exclamationmark.shield"),
+        RoadmapItem(name: "blocks", detail: "blocked users/listings", icon: "nosign"),
+        RoadmapItem(name: "notifications", detail: "push notification queue", icon: "bell")
+    ]
+
+    var body: some View {
+        List {
+            Section("Also Useful") {
+                ForEach(usefulServices) { item in
+                    RoadmapRow(item: item)
+                }
+            }
+
+            Section("Core Data Model") {
+                ForEach(dataModel) { item in
+                    RoadmapRow(item: item)
+                }
+            }
+        }
+        .navigationTitle("Backend Plan")
+    }
+}
+
+struct RoadmapItem: Identifiable {
+    var id: String { name }
+    var name: String
+    var detail: String
+    var icon: String
+}
+
+struct RoadmapRow: View {
+    var item: RoadmapItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.icon)
+                .foregroundStyle(Color.questPrimary)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name)
+                    .font(.headline)
+                Text(item.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

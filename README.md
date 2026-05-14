@@ -35,6 +35,28 @@ QuestBond is a native SwiftUI iOS app for matching DND groups with singles, duos
 
 Firebase is not required for the current direction. Supabase covers the main needs for this app: Auth, Postgres data, private Realtime chat, Storage, and Edge Functions. Firebase would mainly be an alternative stack, not an additional requirement.
 
+## Screenshot Checklist Coverage
+
+The app now includes an in-app `More > Services & Data Model` checklist for:
+
+- Apple Push Notifications
+- MapKit / location autocomplete
+- OpenAI moderation
+- Sentry
+- RevenueCat
+- Cloudflare Turnstile
+- users
+- profiles
+- listings
+- listing_roles
+- swipes
+- matches
+- messages
+- message_threads
+- reports
+- blocks
+- notifications
+
 ## Run
 
 Open [QuestBond.xcodeproj](/Users/nickperez/DND%20App/QuestBond.xcodeproj) in Xcode, select the `QuestBond` scheme, and run on an iOS simulator.

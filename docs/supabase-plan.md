@@ -11,6 +11,15 @@ This app should stay local-first for prototyping, then move the social layer to 
 - Edge Functions for push notifications, moderation hooks, and match-created side effects.
 - Apple Push Notification service for match/message alerts.
 
+## Also Useful
+
+- Apple Push Notifications: new match and message alerts.
+- MapKit or location autocomplete: in-person group discovery.
+- OpenAI moderation or similar: message/profile safety checks.
+- Sentry: crash/error tracking.
+- RevenueCat: subscriptions later, if premium filters or boosts are added.
+- Cloudflare Turnstile or similar abuse protection: useful if spam becomes an issue.
+
 Supabase docs checked for this plan:
 
 - Realtime private channels and Swift client usage: https://supabase.com/docs/guides/realtime/getting_started
@@ -38,6 +47,9 @@ create table public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Supabase Auth's auth.users table is the source of truth for account identity.
+-- The public.profiles row stores public/social profile fields for each auth user.
 
 create table public.listings (
   id uuid primary key default gen_random_uuid(),
@@ -117,6 +129,18 @@ create table public.reports (
   details text,
   created_at timestamptz not null default now()
 );
+
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null check (kind in ('new_match', 'new_message', 'listing_interest', 'system')),
+  title text not null,
+  body text not null,
+  payload jsonb not null default '{}'::jsonb,
+  sent_at timestamptz,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
 ```
 
 ## RLS Policy Shape
@@ -131,6 +155,7 @@ Enable RLS on every public table.
 - `messages`: users can read/send messages only in threads attached to their matches.
 - `blocks`: users can manage only their own block rows.
 - `reports`: users can create reports; only admins/moderators read all reports.
+- `notifications`: users can read/update only their own notifications; Edge Functions insert/send notifications.
 
 For Realtime, use private channels named `thread:<thread_id>:messages`, and authorize access against thread membership. Avoid broad policies on `realtime.messages` in production.
 

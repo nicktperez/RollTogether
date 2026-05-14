@@ -5,6 +5,8 @@
 - Add Apple Sign-In and profile verification.
 - Gate all direct contact details behind matched chats.
 - Add block, report, mute, and unmatch.
+- Add OpenAI moderation or similar checks for messages, profile text, and listing text.
+- Add Cloudflare Turnstile or similar abuse protection if spam appears.
 - Add profile completeness scoring.
 - Add lightweight DM/table reputation after sessions.
 - Add moderation queues for reported profiles and messages.
@@ -12,6 +14,7 @@
 ## Matching
 
 - Add availability windows instead of free-text schedules.
+- Add MapKit or location autocomplete for in-person discovery.
 - Add distance filtering for in-person games.
 - Add campaign commitment: one-shot, short arc, long campaign, West Marches.
 - Add table sliders: roleplay, combat, puzzles, exploration, rules strictness.
@@ -34,8 +37,9 @@
 - Add profile/listing preview before publishing.
 - Add draft listings.
 - Add searchable listing directory separate from swipe discovery.
-- Add notifications for new matches, new messages, and listing interest.
+- Add Apple Push Notifications for new matches, new messages, and listing interest.
 - Add premium features later: boosts, advanced filters, extra active listings.
+- Add RevenueCat when subscriptions become part of the product.
 
 ## Engineering
 
