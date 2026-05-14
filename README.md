@@ -24,6 +24,12 @@ QuestBond is a native SwiftUI iOS app for matching DND groups with singles, duos
 - Main navigation focused on `Discover`, `Chats`, and `More`.
 - Floating plus action on Discover for starting a new group/player search setup.
 - Local delete-account action in `More`.
+- Block/report actions from matched chats.
+- MapKit-backed location autocomplete scaffolding and distance filter controls.
+- APNs registration scaffolding for future match/message notifications.
+- Supabase-ready auth/repository protocols for the backend migration.
+- Unit tests for matching and filter behavior.
+- Full iOS app icon set generated from the QuestBond mark.
 - Native forms for group and party listings.
 - Local persistence using `UserDefaults`.
 - Generated brand mark/theme asset in the Xcode asset catalog.

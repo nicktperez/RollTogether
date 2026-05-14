@@ -14,8 +14,8 @@
 ## Matching
 
 - Add availability windows instead of free-text schedules.
-- Add MapKit or location autocomplete for in-person discovery.
-- Add distance filtering for in-person games.
+- Add MapKit or location autocomplete for in-person discovery. Initial app-side autocomplete is scaffolded.
+- Add distance filtering for in-person games. Initial app-side distance controls are scaffolded; true filtering needs geocoded coordinates in the backend.
 - Add campaign commitment: one-shot, short arc, long campaign, West Marches.
 - Add table sliders: roleplay, combat, puzzles, exploration, rules strictness.
 - Add safety and comfort tags: Session Zero, lines/veils, beginner-friendly, LGBTQ+ friendly.
@@ -47,5 +47,6 @@
 - Add unit tests for match scoring and filter behavior.
 - Add UI tests for create, connect, chat, and persistence flows.
 - Add Supabase repositories behind protocols so local mock data remains available.
+- Add Supabase Auth implementation once project URL and publishable key are available.
 - Add crash reporting with Sentry before external testing.
 - Add a real asset catalog app icon set before TestFlight.
