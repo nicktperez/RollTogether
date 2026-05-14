@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QuestBond | DND Group Matcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="background-orb background-orb-left" aria-hidden="true"></div>
+    <div class="background-orb background-orb-right" aria-hidden="true"></div>
+
+    <header class="hero">
+      <p class="eyebrow">DND GROUP MATCHER</p>
+      <h1>QuestBond</h1>
+      <p class="subtitle">
+        Swipe-style matching for groups, singles, duos, trios, and full adventuring parties.
+      </p>
+      <div class="stats" role="status" aria-live="polite">
+        <div class="stat-item">
+          <span id="group-count">0</span>
+          <p>Groups</p>
+        </div>
+        <div class="stat-item">
+          <span id="party-count">0</span>
+          <p>Players / Parties</p>
+        </div>
+        <div class="stat-item">
+          <span id="match-count">0</span>
+          <p>Connections</p>
+        </div>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Main sections">
+      <button class="tab active" data-tab-target="discover-panel">Discover</button>
+      <button class="tab" data-tab-target="create-group-panel">Create Group</button>
+      <button class="tab" data-tab-target="create-party-panel">Create Party</button>
+      <button class="tab" data-tab-target="listings-panel">Listings</button>
+      <button class="tab" data-tab-target="matches-panel">Matches</button>
+    </nav>
+
+    <main>
+      <section id="discover-panel" class="panel active">
+        <div class="discover-layout">
+          <article class="discover-block">
+            <header class="block-header">
+              <h2>Groups Browsing Players</h2>
+              <p>Use your group listing to swipe through singles, duos, trios, and more.</p>
+            </header>
+
+            <div class="card setup-card">
+              <h3>Before Search Setup</h3>
+              <div class="form-grid">
+                <label>
+                  Your Group Listing
+                  <select id="group-owner-select"></select>
+                </label>
+                <label>
+                  Session Type
+                  <select id="group-pre-mode">
+                    <option value="any">Any</option>
+                    <option value="online">Online</option>
+                    <option value="in-person">In-Person</option>
+                  </select>
+                </label>
+                <label>
+                  Target Experience
+                  <select id="group-pre-experience">
+                    <option value="any">Any</option>
+                    <option value="new">New</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="veteran">Veteran</option>
+                  </select>
+                </label>
+                <label>
+                  Minimum Party Size
+                  <input id="group-pre-min-size" type="number" min="1" max="6" value="1" />
+                </label>
+              </div>
+              <button id="group-pre-apply" class="btn btn-primary" type="button">Apply Search Setup</button>
+            </div>
+
+            <div class="card setup-card compact">
+              <h3>Post-Search Filters</h3>
+              <div class="form-grid">
+                <label>
+                  Session Type
+                  <select id="group-post-mode">
+                    <option value="any">Any</option>
+                    <option value="online">Online</option>
+                    <option value="in-person">In-Person</option>
+                  </select>
+                </label>
+                <label>
+                  Campaign Fit
+                  <select id="group-post-campaign">
+                    <option value="any">Any</option>
+                    <option value="heroic">Heroic</option>
+                    <option value="gritty">Gritty</option>
+                    <option value="sandbox">Sandbox</option>
+                    <option value="story-heavy">Story-Heavy</option>
+                    <option value="comedy">Comedy</option>
+                    <option value="horror">Horror</option>
+                  </select>
+                </label>
+                <label>
+                  Quick Search
+                  <input id="group-post-query" type="text" placeholder="Name, location, vibe" />
+                </label>
+              </div>
+              <button id="group-post-reset" class="btn btn-ghost" type="button">Reset Filters</button>
+            </div>
+
+            <div id="group-candidate-card" class="card swipe-card"></div>
+            <div class="swipe-actions">
+              <button id="group-pass-btn" class="btn btn-danger" type="button">Pass</button>
+              <button id="group-connect-btn" class="btn btn-success" type="button">Connect</button>
+            </div>
+            <p id="group-counter" class="counter"></p>
+          </article>
+
+          <article class="discover-block">
+            <header class="block-header">
+              <h2>Players Browsing Groups</h2>
+              <p>Use your player/party listing to swipe through open DND tables.</p>
+            </header>
+
+            <div class="card setup-card">
+              <h3>Before Search Setup</h3>
+              <div class="form-grid">
+                <label>
+                  Your Party Listing
+                  <select id="party-owner-select"></select>
+                </label>
+                <label>
+                  Session Type
+                  <select id="party-pre-mode">
+                    <option value="any">Any</option>
+                    <option value="online">Online</option>
+                    <option value="in-person">In-Person</option>
+                  </select>
+                </label>
+                <label>
+                  Campaign Style
+                  <select id="party-pre-campaign">
+                    <option value="any">Any</option>
+                    <option value="heroic">Heroic</option>
+                    <option value="gritty">Gritty</option>
+                    <option value="sandbox">Sandbox</option>
+                    <option value="story-heavy">Story-Heavy</option>
+                    <option value="comedy">Comedy</option>
+                    <option value="horror">Horror</option>
+                  </select>
+                </label>
+                <label>
+                  Minimum Open Slots
+                  <input id="party-pre-min-slots" type="number" min="1" max="8" value="1" />
+                </label>
+              </div>
+              <button id="party-pre-apply" class="btn btn-primary" type="button">Apply Search Setup</button>
+            </div>
+
+            <div class="card setup-card compact">
+              <h3>Post-Search Filters</h3>
+              <div class="form-grid">
+                <label>
+                  Session Type
+                  <select id="party-post-mode">
+                    <option value="any">Any</option>
+                    <option value="online">Online</option>
+                    <option value="in-person">In-Person</option>
+                  </select>
+                </label>
+                <label>
+                  Table Experience
+                  <select id="party-post-experience">
+                    <option value="any">Any</option>
+                    <option value="new">New</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="veteran">Veteran</option>
+                  </select>
+                </label>
+                <label>
+                  Quick Search
+                  <input id="party-post-query" type="text" placeholder="Name, location, style" />
+                </label>
+              </div>
+              <button id="party-post-reset" class="btn btn-ghost" type="button">Reset Filters</button>
+            </div>
+
+            <div id="party-candidate-card" class="card swipe-card"></div>
+            <div class="swipe-actions">
+              <button id="party-pass-btn" class="btn btn-danger" type="button">Pass</button>
+              <button id="party-connect-btn" class="btn btn-success" type="button">Connect</button>
+            </div>
+            <p id="party-counter" class="counter"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="create-group-panel" class="panel">
+        <article class="card form-card">
+          <header class="block-header">
+            <h2>Create Group Listing</h2>
+            <p>Post a table that is looking for more players.</p>
+          </header>
+
+          <form id="group-form" class="stacked-form">
+            <div class="form-grid">
+              <label>
+                Group Name
+                <input id="group-name" type="text" required />
+              </label>
+              <label>
+                Session Type
+                <select id="group-mode" required>
+                  <option value="online">Online</option>
+                  <option value="in-person">In-Person</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </label>
+              <label>
+                Location / Time Zone
+                <input id="group-location" type="text" placeholder="City or UTC offset" />
+              </label>
+              <label>
+                Open Slots
+                <input id="group-open-slots" type="number" min="1" max="8" value="1" required />
+              </label>
+              <label>
+                Campaign Style
+                <select id="group-campaign-style" required>
+                  <option value="heroic">Heroic</option>
+                  <option value="gritty">Gritty</option>
+                  <option value="sandbox">Sandbox</option>
+                  <option value="story-heavy">Story-Heavy</option>
+                  <option value="comedy">Comedy</option>
+                  <option value="horror">Horror</option>
+                </select>
+              </label>
+              <label>
+                Table Experience
+                <select id="group-table-experience">
+                  <option value="new">New</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="veteran">Veteran</option>
+                </select>
+              </label>
+              <label>
+                Looking For Party Size
+                <select id="group-looking-party-size">
+                  <option value="any">Any</option>
+                  <option value="single">Single</option>
+                  <option value="duo">Duo</option>
+                  <option value="trio">Trio</option>
+                  <option value="squad">4+</option>
+                </select>
+              </label>
+              <label>
+                Desired Player Experience
+                <select id="group-desired-experience">
+                  <option value="any">Any</option>
+                  <option value="new">New</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="veteran">Veteran</option>
+                </select>
+              </label>
+              <fieldset class="role-fieldset">
+                <legend>Desired Party Roles</legend>
+                <label><input type="checkbox" name="group-desired-roles" value="tank" /> Tank</label>
+                <label><input type="checkbox" name="group-desired-roles" value="healer" /> Healer</label>
+                <label><input type="checkbox" name="group-desired-roles" value="damage" /> Damage</label>
+                <label><input type="checkbox" name="group-desired-roles" value="support" /> Support</label>
+                <label><input type="checkbox" name="group-desired-roles" value="controller" /> Controller</label>
+                <label><input type="checkbox" name="group-desired-roles" value="face" /> Face</label>
+                <label><input type="checkbox" name="group-desired-roles" value="scout" /> Scout</label>
+              </fieldset>
+              <label>
+                Character Vibe Wanted
+                <input id="group-character-vibe" type="text" placeholder="Paladins, sneaky rogues, chaos crew" />
+              </label>
+              <label>
+                Schedule
+                <input id="group-schedule" type="text" placeholder="Fridays 7 PM EST" />
+              </label>
+              <label class="full-width">
+                About The Group
+                <textarea id="group-about" rows="3" placeholder="Tell players what your table feels like."></textarea>
+              </label>
+              <label>
+                Contact
+                <input id="group-contact" type="text" placeholder="Discord, email, etc." />
+              </label>
+            </div>
+            <button class="btn btn-primary" type="submit">Publish Group Listing</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="create-party-panel" class="panel">
+        <article class="card form-card">
+          <header class="block-header">
+            <h2>Create Player / Party Listing</h2>
+            <p>Post a single player, duo, trio, or full party looking for a table.</p>
+          </header>
+
+          <form id="party-form" class="stacked-form">
+            <div class="form-grid">
+              <label>
+                Player / Party Name
+                <input id="party-name" type="text" required />
+              </label>
+              <label>
+                Party Size
+                <input id="party-size" type="number" min="1" max="6" value="1" required />
+              </label>
+              <label>
+                Session Type
+                <select id="party-mode" required>
+                  <option value="online">Online</option>
+                  <option value="in-person">In-Person</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </label>
+              <label>
+                Location / Time Zone
+                <input id="party-location" type="text" placeholder="City or UTC offset" />
+              </label>
+              <label>
+                Experience Level
+                <select id="party-experience">
+                  <option value="new">New</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="veteran">Veteran</option>
+                </select>
+              </label>
+              <label>
+                Looking For Campaign
+                <select id="party-looking-campaign">
+                  <option value="any">Any</option>
+                  <option value="heroic">Heroic</option>
+                  <option value="gritty">Gritty</option>
+                  <option value="sandbox">Sandbox</option>
+                  <option value="story-heavy">Story-Heavy</option>
+                  <option value="comedy">Comedy</option>
+                  <option value="horror">Horror</option>
+                </select>
+              </label>
+              <label>
+                Looking For Table Experience
+                <select id="party-looking-experience">
+                  <option value="any">Any</option>
+                  <option value="new">New</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="veteran">Veteran</option>
+                </select>
+              </label>
+              <fieldset class="role-fieldset">
+                <legend>Roles Covered</legend>
+                <label><input type="checkbox" name="party-roles-covered" value="tank" /> Tank</label>
+                <label><input type="checkbox" name="party-roles-covered" value="healer" /> Healer</label>
+                <label><input type="checkbox" name="party-roles-covered" value="damage" /> Damage</label>
+                <label><input type="checkbox" name="party-roles-covered" value="support" /> Support</label>
+                <label><input type="checkbox" name="party-roles-covered" value="controller" /> Controller</label>
+                <label><input type="checkbox" name="party-roles-covered" value="face" /> Face</label>
+                <label><input type="checkbox" name="party-roles-covered" value="scout" /> Scout</label>
+              </fieldset>
+              <label>
+                Character Vibe
+                <input id="party-vibe" type="text" placeholder="Frontline bruisers, arcane chaos, etc." />
+              </label>
+              <label>
+                Schedule
+                <input id="party-schedule" type="text" placeholder="Weeknights after 8 PM CST" />
+              </label>
+              <label class="full-width">
+                About You / Your Party
+                <textarea id="party-about" rows="3" placeholder="Tell groups what makes your party a fit."></textarea>
+              </label>
+              <label>
+                Contact
+                <input id="party-contact" type="text" placeholder="Discord, email, etc." />
+              </label>
+            </div>
+            <button class="btn btn-primary" type="submit">Publish Party Listing</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="listings-panel" class="panel">
+        <div class="listing-layout">
+          <article class="card list-card">
+            <header class="block-header">
+              <h2>Group Listings</h2>
+            </header>
+            <div id="group-listings" class="listings"></div>
+          </article>
+
+          <article class="card list-card">
+            <header class="block-header">
+              <h2>Player / Party Listings</h2>
+            </header>
+            <div id="party-listings" class="listings"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="matches-panel" class="panel">
+        <article class="card list-card">
+          <header class="block-header split-header">
+            <h2>Saved Connections</h2>
+            <button id="clear-matches-btn" class="btn btn-ghost" type="button">Clear Matches</button>
+          </header>
+          <div id="matches-list" class="listings"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
