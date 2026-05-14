@@ -72,3 +72,18 @@ The previous static web prototype files are still present for reference:
 - [index.html](/Users/nickperez/DND%20App/index.html)
 - [app.js](/Users/nickperez/DND%20App/app.js)
 - [styles.css](/Users/nickperez/DND%20App/styles.css)
+
+## Supabase Connection
+
+The iOS app is connected to the Supabase project `mczhglpdsoiipdqsbjsl` (`RollTogether`) through `QuestBond/Config/SupabaseConfig.swift` and a lightweight URLSession client in `QuestBond/Services/SupabaseClient.swift`.
+
+Applied backend migrations:
+
+- `20260514220659_initial_rolltogether_schema`: creates profiles, listings, roles, swipes, matches, message threads, messages, reports, blocks, notifications, and push tokens with RLS enabled.
+- `20260514220732_advisor_security_and_index_fixes`: revokes public execution on the Supabase-created `rls_auto_enable()` helper and adds foreign-key indexes flagged by advisors.
+
+Current status:
+
+- Supabase Auth/REST plumbing is present.
+- The app still uses local seed data for the main UX until the next pass wires screens directly to authenticated Supabase sessions.
+- Security advisors are clean; performance advisors only report unused indexes because the database is empty.

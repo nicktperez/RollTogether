@@ -1318,6 +1318,8 @@ struct MoreView: View {
                 }
 
                 Section("Backend Readiness") {
+                    BackendStatusView()
+
                     NavigationLink {
                         ServiceRoadmapView()
                     } label: {
@@ -1352,6 +1354,55 @@ struct MoreView: View {
                 Text("This removes local profile data, listings, matches, chats, and decisions from this device. Backend deletion will be wired when Supabase auth is connected.")
             }
         }
+    }
+}
+
+struct BackendStatusView: View {
+    @State private var isChecking = false
+    @State private var isReachable: Bool?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Supabase", systemImage: "server.rack")
+                Spacer()
+                statusLabel
+            }
+
+            Text("Project \(SupabaseConfig.projectRef) is configured with the publishable key and production tables.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button(isChecking ? "Checking..." : "Check Connection") {
+                Task { await checkConnection() }
+            }
+            .disabled(isChecking)
+        }
+        .task {
+            if isReachable == nil {
+                await checkConnection()
+            }
+        }
+    }
+
+    private var statusLabel: some View {
+        Group {
+            if let isReachable {
+                Text(isReachable ? "Connected" : "Offline")
+                    .font(.caption.bold())
+                    .foregroundStyle(isReachable ? Color.questPrimary : .red)
+            } else {
+                Text("Not checked")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @MainActor private func checkConnection() async {
+        isChecking = true
+        isReachable = await SupabaseClient().checkConnection()
+        isChecking = false
     }
 }
 

@@ -21,6 +21,9 @@
 		1A2B3C4D5E6F700000000026 /* LocationSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000027 /* LocationSearchService.swift */; };
 		1A2B3C4D5E6F700000000030 /* MatchingServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000031 /* MatchingServiceTests.swift */; };
 		1A2B3C4D5E6F70000000003D /* CrashReportingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000003E /* CrashReportingService.swift */; };
+		1A2B3C4D5E6F700000000040 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */; };
+		1A2B3C4D5E6F700000000042 /* SupabaseClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */; };
+		1A2B3C4D5E6F700000000044 /* SupabaseBackendServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +53,9 @@
 		1A2B3C4D5E6F700000000031 /* MatchingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchingServiceTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000033 /* QuestBondTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuestBondTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F70000000003E /* CrashReportingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/CrashReportingService.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config/SupabaseConfig.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseClient.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseBackendServices.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +100,9 @@
 				1A2B3C4D5E6F700000000025 /* BackendServices.swift */,
 				1A2B3C4D5E6F700000000027 /* LocationSearchService.swift */,
 				1A2B3C4D5E6F70000000003E /* CrashReportingService.swift */,
+				1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */,
+				1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */,
+				1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */,
 				1A2B3C4D5E6F700000000013 /* Assets.xcassets */,
 			);
 			path = QuestBond;
@@ -227,6 +236,9 @@
 				1A2B3C4D5E6F700000000024 /* BackendServices.swift in Sources */,
 				1A2B3C4D5E6F700000000026 /* LocationSearchService.swift in Sources */,
 				1A2B3C4D5E6F70000000003D /* CrashReportingService.swift in Sources */,
+				1A2B3C4D5E6F700000000040 /* SupabaseConfig.swift in Sources */,
+				1A2B3C4D5E6F700000000042 /* SupabaseClient.swift in Sources */,
+				1A2B3C4D5E6F700000000044 /* SupabaseBackendServices.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

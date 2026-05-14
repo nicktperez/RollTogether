@@ -1,8 +1,8 @@
 import Foundation
 
 enum BackendConfiguration {
-    static let supabaseURLPlaceholder = "https://<project-ref>.supabase.co"
-    static let publishableKeyPlaceholder = "sb_publishable_<key>"
+    static let supabaseURL = SupabaseConfig.url.absoluteString
+    static let publishableKeyPrefix = String(SupabaseConfig.publishableKey.prefix(24))
 }
 
 protocol AuthServicing {
@@ -31,7 +31,7 @@ struct LocalAuthService: AuthServicing {
 }
 
 struct SupabaseIntegrationNotes {
-    static let requiredPackage = "https://github.com/supabase/supabase-swift.git"
-    static let minimumPackageVersion = "2.0.0"
+    static let projectRef = SupabaseConfig.projectRef
+    static let transport = "Supabase REST/Auth APIs via URLSession"
     static let realtimeChannelPattern = "thread:<thread_id>:messages"
 }
