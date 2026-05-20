@@ -32,6 +32,6 @@ struct LocalAuthService: AuthServicing {
 
 struct SupabaseIntegrationNotes {
     static let projectRef = SupabaseConfig.projectRef
-    static let transport = "Supabase REST/Auth APIs via URLSession"
+    static let transport = "Supabase REST/Auth APIs via URLSession plus Supabase Swift Realtime"
     static let realtimeChannelPattern = "thread:<thread_id>:messages"
 }
