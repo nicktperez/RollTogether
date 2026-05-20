@@ -51,6 +51,7 @@ final class QuestBondStore: ObservableObject {
 
     private let storageKey = "questbond.native.state.v1"
     private var repository: SupabaseQuestBondRepository?
+    private let realtime = SupabaseRealtimeService()
 
     init() {
         if let saved = Self.loadSavedState(key: storageKey) {
@@ -154,7 +155,12 @@ final class QuestBondStore: ObservableObject {
         let moderation = ModerationService().evaluate([listing.name, listing.characterVibe, listing.about, listing.contact])
         guard moderation.canPublish else {
             moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
             return
+        }
+
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
         }
 
         groups.insert(listing, at: 0)
@@ -167,7 +173,12 @@ final class QuestBondStore: ObservableObject {
         let moderation = ModerationService().evaluate([listing.name, listing.vibe, listing.about, listing.contact])
         guard moderation.canPublish else {
             moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
             return
+        }
+
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
         }
 
         parties.insert(listing, at: 0)
@@ -247,7 +258,12 @@ final class QuestBondStore: ObservableObject {
         let moderation = ModerationService().evaluate([trimmed])
         guard moderation.canPublish else {
             moderationWarning = moderation.reason ?? "This message needs moderation before sending."
+            Task { await mirrorModeration(subject: .message, result: moderation) }
             return
+        }
+
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .message, result: moderation) }
         }
 
         let message = ChatMessage(threadID: thread.id, sender: .me, text: trimmed)
@@ -291,6 +307,22 @@ final class QuestBondStore: ObservableObject {
         }
     }
 
+    func subscribeToRealtime(thread: ChatThread, auth: AuthSessionStore) {
+        guard let accessToken = auth.accessToken else { return }
+        realtime.subscribeToMessages(threadID: thread.id, accessToken: accessToken) { [weak self] event in
+            guard let self else { return }
+            guard !self.messages.contains(where: { $0.id == event.id }) else { return }
+            let sender: ChatMessage.Sender = event.senderUserID == auth.userID ? .me : .match
+            self.messages.append(ChatMessage(id: event.id, threadID: event.threadID, sender: sender, text: event.body))
+            self.touchThread(event.threadID)
+            self.backendStatus = "Realtime chat active"
+        }
+    }
+
+    func disconnectRealtime() {
+        realtime.disconnect()
+    }
+
     func sendPrompt(_ text: String, in thread: ChatThread) {
         sendMessage(text, in: thread)
     }
@@ -313,6 +345,7 @@ final class QuestBondStore: ObservableObject {
         )
 
         createThread(for: match, group: group, party: party)
+        Task { await mirrorMatchThread(group: group, party: party, score: score, localMatchID: match.id) }
     }
 
     private func createThread(for match: MatchRecord, group: GroupListing, party: PartyListing) {
@@ -400,6 +433,39 @@ final class QuestBondStore: ObservableObject {
             backendStatus = "Swipe synced"
         } catch {
             backendStatus = "Swipe sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorMatchThread(group: GroupListing, party: PartyListing, score: Int, localMatchID: UUID) async {
+        guard let repository else { return }
+        do {
+            let created = try await repository.createMatchThread(groupID: group.id, partyID: party.id, score: score)
+            if let matchIndex = matches.firstIndex(where: { $0.id == localMatchID }) {
+                matches[matchIndex].id = created.matchID
+            }
+            if let threadIndex = threads.firstIndex(where: { $0.matchID == localMatchID }) {
+                let oldThreadID = threads[threadIndex].id
+                threads[threadIndex].id = created.threadID
+                threads[threadIndex].matchID = created.matchID
+                messages = messages.map { message in
+                    var updated = message
+                    if updated.threadID == oldThreadID { updated.threadID = created.threadID }
+                    return updated
+                }
+            }
+            backendStatus = "Match synced"
+        } catch {
+            backendStatus = "Match sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorModeration(subject: ReportRecord.Subject, listingID: UUID? = nil, messageID: UUID? = nil, result: ModerationResult) async {
+        guard let repository else { return }
+        do {
+            try await repository.recordModeration(subject: subject, listingID: listingID, messageID: messageID, result: result)
+            backendStatus = "Moderation event synced"
+        } catch {
+            backendStatus = "Moderation sync failed: \(error.localizedDescription)"
         }
     }
 

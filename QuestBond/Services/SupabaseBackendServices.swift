@@ -125,6 +125,25 @@ final class SupabaseQuestBondRepository {
         )
     }
 
+    func createMatchThread(groupID: UUID, partyID: UUID, score: Int) async throws -> SupabaseMatchThreadPayload {
+        try await client.createMatchThread(groupListingID: groupID, partyListingID: partyID, score: score, accessToken: requireAccessToken())
+    }
+
+    func recordModeration(subject: ReportRecord.Subject, listingID: UUID? = nil, messageID: UUID? = nil, result: ModerationResult) async throws {
+        guard let userID = userIDProvider() else { throw SupabaseClientError.missingSession }
+        try await client.createModerationEvent(
+            SupabaseModerationEventPayload(
+                userID: userID,
+                subject: subject.rawValue,
+                targetListingID: listingID,
+                targetMessageID: messageID,
+                status: result.status.rawValue,
+                reason: result.reason ?? ""
+            ),
+            accessToken: requireAccessToken()
+        )
+    }
+
     private func requireAccessToken() throws -> String {
         guard let accessToken = accessTokenProvider(), !accessToken.isEmpty else {
             throw SupabaseClientError.missingSession

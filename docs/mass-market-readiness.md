@@ -2,7 +2,7 @@
 
 ## Implemented in the current production-readiness pass
 
-1. Email/password authentication UI with signup, signin, password reset, session persistence, sign out, and delete-account flow.
+1. Email/password authentication UI with signup, signin, password reset, Keychain session persistence, sign out, and delete-account flow.
 2. Supabase REST client coverage for profiles, listings, listing roles, swipes, matches, message threads, messages, reports, blocks, push tokens, nearby search, and Edge Functions.
 3. Supabase-backed app repository wiring for profile save/load, listing publish/load, swipe mirroring, message mirroring, report submission, and block submission.
 4. Realtime-ready database setup for `messages`, `message_threads`, `matches`, and `notifications` through the Supabase realtime publication.
@@ -14,21 +14,24 @@
 10. Coordinate-aware distance filtering in app state and a Supabase `search_listings_nearby` RPC for backend distance search.
 11. Account deletion request audit table with RLS and advisor-clean foreign-key indexing.
 12. Supabase advisor check: security lints are clean; performance lints only report unused indexes because the project does not have real traffic yet.
+13. Server-authoritative match/thread creation through the authenticated `create-match-thread` Edge Function.
+14. Native Sign in with Apple entitlement and identity-token exchange plumbing.
+15. Realtime chat WebSocket listener tied to chat screens.
+16. APNs Edge Function sender with JWT signing and delivery calls, pending Apple secrets.
+17. `moderate-content` Edge Function with OpenAI moderation support, pending `OPENAI_API_KEY`.
 
 ## Still required before public beta
 
-1. Sign in with Apple provider setup in Apple Developer and Supabase, then add the native Apple auth button flow.
-2. Move persisted auth tokens from `UserDefaults` to Keychain before external testing.
-3. Replace local-first matching state with server-authoritative match/thread creation so matches work across devices and accounts.
-4. Add a real Supabase Realtime WebSocket client subscription for chat and match updates; the database and descriptor layer are ready, but the UI does not yet receive live events.
-5. Complete APNs delivery in `send-push-notifications` by adding Apple team ID, key ID, bundle ID, private key secret, JWT signing, delivery calls, retries, and sent/error updates.
-6. Move moderation to a trusted backend path using OpenAI moderation or an equivalent provider; local keyword checks are only a temporary guardrail.
+1. Configure Sign in with Apple in Apple Developer and Supabase. The app entitlement, native identity-token flow, and auth button are now implemented.
+2. Add APNs secrets to Supabase Edge Function environment variables and run a device push test. The sender code now signs JWTs and calls APNs.
+3. Add `OPENAI_API_KEY` to Supabase for production moderation. The `moderate-content` function falls back to keyword checks until that key exists.
+4. Run a two-account device test for server-authoritative match/thread creation and realtime chat delivery. The Edge Function and WebSocket listener are implemented, but real accounts/devices should verify the full flow.
 7. Use backend `search_listings_nearby` in discovery queries so distance filtering scales beyond locally loaded listings.
 8. Add Storage-backed avatars and listing media with image moderation.
 9. Build a moderator/admin review queue for reports, blocked content, and appeal handling.
 10. Add rate limits and abuse controls for signup, listing creation, swipes, reports, and messages.
-11. Add Sentry or equivalent crash/error monitoring before TestFlight.
-12. Create and publish privacy policy, terms of service, support URL, age rating, screenshots, and TestFlight feedback workflow.
+9. Add Sentry or equivalent crash/error monitoring before TestFlight.
+10. Create and publish privacy policy, terms of service, support URL, age rating, screenshots, and TestFlight feedback workflow.
 
 ## Strong next improvements
 

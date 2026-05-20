@@ -221,6 +221,34 @@ struct SupabaseNearbyListingID: Codable, Equatable {
     }
 }
 
+struct SupabaseMatchThreadPayload: Codable, Equatable {
+    var matchID: UUID
+    var threadID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case matchID = "match_id"
+        case threadID = "thread_id"
+    }
+}
+
+struct SupabaseModerationEventPayload: Codable, Equatable {
+    var userID: UUID
+    var subject: String
+    var targetListingID: UUID?
+    var targetMessageID: UUID?
+    var status: String
+    var reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case subject
+        case targetListingID = "target_listing_id"
+        case targetMessageID = "target_message_id"
+        case status
+        case reason
+    }
+}
+
 enum SupabaseClientError: LocalizedError {
     case invalidResponse
     case requestFailed(Int, String)
@@ -277,6 +305,17 @@ final class SupabaseClient {
 
     func signIn(email: String, password: String) async throws -> SupabaseSession {
         try await authRequest(path: "/auth/v1/token?grant_type=password", body: AuthEmailPasswordRequest(email: email, password: password))
+    }
+
+    func signInWithApple(idToken: String, nonce: String, fullName: String?) async throws -> SupabaseSession {
+        try await authRequest(
+            path: "/auth/v1/token?grant_type=id_token",
+            body: AuthIDTokenRequest(provider: "apple", idToken: idToken, nonce: nonce, data: fullName.map { ["full_name": $0] })
+        )
+    }
+
+    func refreshSession(refreshToken: String) async throws -> SupabaseSession {
+        try await authRequest(path: "/auth/v1/token?grant_type=refresh_token", body: AuthRefreshRequest(refreshToken: refreshToken))
     }
 
     func recoverPassword(email: String) async throws {
@@ -376,6 +415,18 @@ final class SupabaseClient {
         return first
     }
 
+    func createMatchThread(groupListingID: UUID, partyListingID: UUID, score: Int, accessToken: String) async throws -> SupabaseMatchThreadPayload {
+        try await functionRequest(
+            name: "create-match-thread",
+            accessToken: accessToken,
+            body: [
+                "group_listing_id": groupListingID.uuidString,
+                "party_listing_id": partyListingID.uuidString,
+                "score": "\(score)"
+            ]
+        )
+    }
+
     func fetchThreads(accessToken: String) async throws -> [SupabaseThreadPayload] {
         var components = URLComponents(url: baseURL.appending(path: "/rest/v1/message_threads"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "select", value: "*"), URLQueryItem(name: "order", value: "updated_at.desc")]
@@ -420,6 +471,16 @@ final class SupabaseClient {
             method: "POST",
             accessToken: accessToken,
             body: block,
+            prefer: "return=minimal"
+        )
+    }
+
+    func createModerationEvent(_ event: SupabaseModerationEventPayload, accessToken: String) async throws {
+        let _: EmptyResponse = try await restRequest(
+            url: baseURL.appending(path: "/rest/v1/moderation_events"),
+            method: "POST",
+            accessToken: accessToken,
+            body: event,
             prefer: "return=minimal"
         )
     }
@@ -539,6 +600,28 @@ private struct AuthSignUpRequest: Encodable {
 
 private struct AuthRecoverRequest: Encodable {
     var email: String
+}
+
+private struct AuthRefreshRequest: Encodable {
+    var refreshToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case refreshToken = "refresh_token"
+    }
+}
+
+private struct AuthIDTokenRequest: Encodable {
+    var provider: String
+    var idToken: String
+    var nonce: String
+    var data: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case idToken = "id_token"
+        case nonce
+        case data
+    }
 }
 
 struct AnyEncodable: Encodable {

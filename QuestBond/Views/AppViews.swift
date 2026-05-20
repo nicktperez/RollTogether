@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct ContentView: View {
@@ -121,6 +122,19 @@ struct AuthView: View {
                 .tint(.questBrass)
                 .foregroundStyle(Color.questInk)
                 .disabled(auth.isWorking || email.isEmpty || password.count < 6)
+
+                Button {
+                    Task { await auth.signInWithApple() }
+                } label: {
+                    Label("Sign in with Apple", systemImage: "apple.logo")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.black)
+                .foregroundStyle(.white)
+                .disabled(auth.isWorking)
 
                 HStack {
                     Button(isCreatingAccount ? "Have an account? Sign in" : "Create account") {
@@ -820,6 +834,7 @@ struct ChatThreadRow: View {
 
 struct ChatDetailView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
     var thread: ChatThread
     @State private var draft = ""
     @State private var showingReport = false
@@ -864,6 +879,12 @@ struct ChatDetailView: View {
         }
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            store.subscribeToRealtime(thread: activeThread, auth: auth)
+        }
+        .onDisappear {
+            store.disconnectRealtime()
+        }
         .toolbar {
             Menu {
                 Button(role: .destructive) {

@@ -7,7 +7,8 @@ final class AuthSessionStore: ObservableObject {
     @Published var isWorking = false
 
     private let client: SupabaseClient
-    private let storageKey = "questbond.supabase.session.v1"
+    private let keychain = KeychainSessionStore()
+    private let appleSignIn = SignInWithAppleService()
 
     var isAuthenticated: Bool { session != nil }
     var accessToken: String? { session?.accessToken }
@@ -16,9 +17,8 @@ final class AuthSessionStore: ObservableObject {
 
     init(client: SupabaseClient = SupabaseClient()) {
         self.client = client
-        if let data = UserDefaults.standard.data(forKey: storageKey) {
-            session = try? JSONDecoder().decode(SupabaseSession.self, from: data)
-        }
+        session = keychain.load()
+        UserDefaults.standard.removeObject(forKey: "questbond.supabase.session.v1")
     }
 
     func signIn(email: String, password: String) async {
@@ -35,6 +35,14 @@ final class AuthSessionStore: ObservableObject {
         }
     }
 
+    func signInWithApple() async {
+        await performAuthAction {
+            let identity = try await appleSignIn.requestIdentityToken()
+            session = try await client.signInWithApple(idToken: identity.idToken, nonce: identity.nonce, fullName: identity.fullName)
+            persist()
+        }
+    }
+
     func recoverPassword(email: String) async {
         await performAuthAction {
             try await client.recoverPassword(email: email)
@@ -44,7 +52,7 @@ final class AuthSessionStore: ObservableObject {
 
     func signOut() {
         session = nil
-        UserDefaults.standard.removeObject(forKey: storageKey)
+        keychain.clear()
     }
 
     func deleteAccount(reason: String) async {
@@ -83,7 +91,11 @@ final class AuthSessionStore: ObservableObject {
     }
 
     private func persist() {
-        guard let session, let data = try? JSONEncoder().encode(session) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        guard let session else { return }
+        do {
+            try keychain.save(session)
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 }

@@ -84,8 +84,8 @@ Applied backend migrations:
 
 Current status:
 
-- Email/password Supabase Auth is active in the app, including signup, signin, password reset, session persistence, sign out, and authenticated account deletion.
+- Email/password Supabase Auth is active in the app, including signup, signin, password reset, Keychain session persistence, sign out, and authenticated account deletion.
 - Profiles, listings, roles, swipes, messages, reports, blocks, and push tokens are wired through the lightweight Supabase REST client.
-- Realtime publication and notification queue triggers are enabled in Supabase; the app still needs a live WebSocket subscription layer for realtime UI updates.
-- `delete-account` and `send-push-notifications` Edge Functions are deployed. Push delivery still needs APNs signing secrets and delivery implementation.
+- Realtime publication, private broadcast policies, and a lightweight iOS WebSocket listener are implemented for chat updates.
+- `delete-account`, `send-push-notifications`, `moderate-content`, and `create-match-thread` Edge Functions are deployed. Push delivery still needs APNs secrets configured.
 - Security advisors are clean; performance advisors only report unused indexes because the database is empty/new.

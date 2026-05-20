@@ -27,6 +27,8 @@
 		1A2B3C4D5E6F700000000046 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */; };
 		1A2B3C4D5E6F700000000048 /* ModerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000049 /* ModerationService.swift */; };
 		1A2B3C4D5E6F70000000004A /* SupabaseRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */; };
+		1A2B3C4D5E6F70000000004C /* KeychainSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000004D /* KeychainSessionStore.swift */; };
+		1A2B3C4D5E6F70000000004E /* SignInWithAppleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000004F /* SignInWithAppleService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +64,9 @@
 		1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AuthSessionStore.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000049 /* ModerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ModerationService.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseRealtimeService.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70000000004D /* KeychainSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/KeychainSessionStore.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70000000004F /* SignInWithAppleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SignInWithAppleService.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000050 /* QuestBond.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = QuestBond.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -112,6 +117,9 @@
 				1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */,
 				1A2B3C4D5E6F700000000049 /* ModerationService.swift */,
 				1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */,
+				1A2B3C4D5E6F70000000004D /* KeychainSessionStore.swift */,
+				1A2B3C4D5E6F70000000004F /* SignInWithAppleService.swift */,
+				1A2B3C4D5E6F700000000050 /* QuestBond.entitlements */,
 				1A2B3C4D5E6F700000000013 /* Assets.xcassets */,
 			);
 			path = QuestBond;
@@ -251,6 +259,8 @@
 				1A2B3C4D5E6F700000000046 /* AuthSessionStore.swift in Sources */,
 				1A2B3C4D5E6F700000000048 /* ModerationService.swift in Sources */,
 				1A2B3C4D5E6F70000000004A /* SupabaseRealtimeService.swift in Sources */,
+				1A2B3C4D5E6F70000000004C /* KeychainSessionStore.swift in Sources */,
+				1A2B3C4D5E6F70000000004E /* SignInWithAppleService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -412,6 +422,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				CODE_SIGN_ENTITLEMENTS = QuestBond/QuestBond.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nickperez.questbond;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -427,6 +438,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_ENTITLEMENTS = QuestBond/QuestBond.entitlements;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;

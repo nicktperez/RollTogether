@@ -21,7 +21,9 @@ Local migration files live in `supabase/migrations/`.
 ## Edge Functions
 
 1. `delete-account`: authenticated function that validates the bearer token, writes an account deletion request, and deletes the Supabase Auth user through the service-role admin API.
-2. `send-push-notifications`: authenticated function scaffold that reads pending notification rows and reports queue state. It still needs APNs signing and delivery configuration before production use.
+2. `send-push-notifications`: authenticated function that reads pending notification rows, signs APNs JWTs, sends alert pushes, and marks notifications delivered. It requires APNs environment secrets before delivery will run.
+3. `moderate-content`: authenticated moderation function that uses OpenAI moderation when `OPENAI_API_KEY` is configured, with a keyword fallback for development.
+4. `create-match-thread`: authenticated server-side function that validates listing ownership, creates/upserts the match, and creates/upserts the chat thread with the service role.
 
 Local function source lives in `supabase/functions/`.
 
@@ -52,11 +54,11 @@ RLS is enabled on public tables.
 
 ## Production Follow-Up
 
-1. Add the Supabase Swift package or a maintained WebSocket client for actual Realtime subscriptions.
-2. Make match creation server-authoritative, preferably in an RPC or Edge Function that atomically creates reciprocal matches and threads.
-3. Complete APNs delivery in the notification Edge Function.
-4. Add a backend moderation Edge Function and require it before publishing listings or delivering messages.
-5. Move auth session storage to Keychain.
+1. Configure Apple Sign-In provider values in Supabase and Apple Developer.
+2. Configure APNs Edge Function secrets: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRIVATE_KEY`, and `APNS_USE_SANDBOX`.
+3. Configure `OPENAI_API_KEY` for production moderation.
+4. Run real-device tests for APNs and Sign in with Apple because simulator/local signing cannot prove those external services.
+5. Consider replacing the lightweight custom realtime socket with `supabase-swift` before scale testing if you want maintained protocol handling.
 6. Add Supabase Storage policies for avatars and listing media.
 7. Add admin-only report review and audit tooling.
 8. Keep running Supabase advisors after schema changes and before every external release.
