@@ -23,11 +23,11 @@ QuestBond is a native SwiftUI iOS app for matching DND groups with singles, duos
 - First-run onboarding that explains discovery, new searches, and chat.
 - Main navigation focused on `Discover`, `Chats`, and `More`.
 - Floating plus action on Discover for starting a new group/player search setup.
-- Local delete-account action in `More`.
-- Block/report actions from matched chats.
-- MapKit-backed location autocomplete scaffolding and distance filter controls.
-- APNs registration scaffolding for future match/message notifications.
-- Supabase-ready auth/repository protocols for the backend migration.
+- Authenticated delete-account action in `More` backed by a Supabase Edge Function.
+- Block/report actions from matched chats, mirrored to Supabase.
+- MapKit/CoreLocation-backed location autocomplete, geocoding, and distance filter controls.
+- APNs registration scaffolding plus Supabase push token upload and notification queue triggers.
+- Supabase Auth, REST repository, migrations, and Edge Functions wired for production backend work.
 - Unit tests for matching and filter behavior.
 - Full iOS app icon set generated from the QuestBond mark.
 - Native forms for group and party listings.
@@ -84,6 +84,8 @@ Applied backend migrations:
 
 Current status:
 
-- Supabase Auth/REST plumbing is present.
-- The app still uses local seed data for the main UX until the next pass wires screens directly to authenticated Supabase sessions.
-- Security advisors are clean; performance advisors only report unused indexes because the database is empty.
+- Email/password Supabase Auth is active in the app, including signup, signin, password reset, session persistence, sign out, and authenticated account deletion.
+- Profiles, listings, roles, swipes, messages, reports, blocks, and push tokens are wired through the lightweight Supabase REST client.
+- Realtime publication and notification queue triggers are enabled in Supabase; the app still needs a live WebSocket subscription layer for realtime UI updates.
+- `delete-account` and `send-push-notifications` Edge Functions are deployed. Push delivery still needs APNs signing secrets and delivery implementation.
+- Security advisors are clean; performance advisors only report unused indexes because the database is empty/new.

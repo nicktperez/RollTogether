@@ -1,4 +1,5 @@
 import MapKit
+import CoreLocation
 
 final class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
     @Published var query = "" {
@@ -10,6 +11,7 @@ final class LocationSearchService: NSObject, ObservableObject, MKLocalSearchComp
     @Published private(set) var suggestions: [String] = []
 
     private let completer = MKLocalSearchCompleter()
+    private let geocoder = CLGeocoder()
 
     override init() {
         super.init()
@@ -30,6 +32,16 @@ final class LocationSearchService: NSObject, ObservableObject, MKLocalSearchComp
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         DispatchQueue.main.async {
             self.suggestions = []
+        }
+    }
+
+    func geocode(_ location: String) async -> CLLocationCoordinate2D? {
+        guard !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        do {
+            let placemarks = try await geocoder.geocodeAddressString(location)
+            return placemarks.first?.location?.coordinate
+        } catch {
+            return nil
         }
     }
 }

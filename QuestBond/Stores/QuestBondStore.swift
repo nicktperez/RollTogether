@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 final class QuestBondStore: ObservableObject {
     @Published var currentUser: UserProfile {
         didSet { save() }
@@ -45,7 +46,11 @@ final class QuestBondStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published private(set) var backendStatus = "Offline local mode"
+    @Published var moderationWarning: String?
+
     private let storageKey = "questbond.native.state.v1"
+    private var repository: SupabaseQuestBondRepository?
 
     init() {
         if let saved = Self.loadSavedState(key: storageKey) {
@@ -108,6 +113,7 @@ final class QuestBondStore: ObservableObject {
 
             return MatchingService.matchesMode(party.mode, filter: groupFilters.postMode)
                 && campaignMatches
+                && isWithinDistance(ownerLatitude: owner.latitude, ownerLongitude: owner.longitude, targetLatitude: party.latitude, targetLongitude: party.longitude, maximumMiles: Double(groupFilters.maximumDistanceMiles))
                 && MatchingService.matchesQuery(groupFilters.query, values: [party.name, party.location, party.vibe, party.about])
         }
 
@@ -135,6 +141,7 @@ final class QuestBondStore: ObservableObject {
             let group = candidate.entry
             return MatchingService.matchesMode(group.mode, filter: partyFilters.postMode)
                 && MatchingService.valueMatches(requested: partyFilters.postExperience, actual: group.tableExperience)
+                && isWithinDistance(ownerLatitude: owner.latitude, ownerLongitude: owner.longitude, targetLatitude: group.latitude, targetLongitude: group.longitude, maximumMiles: Double(partyFilters.maximumDistanceMiles))
                 && MatchingService.matchesQuery(partyFilters.query, values: [group.name, group.location, group.characterVibe, group.about])
         }
 
@@ -144,20 +151,35 @@ final class QuestBondStore: ObservableObject {
     }
 
     func addGroup(_ listing: GroupListing) {
+        let moderation = ModerationService().evaluate([listing.name, listing.characterVibe, listing.about, listing.contact])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            return
+        }
+
         groups.insert(listing, at: 0)
         groupFilters.ownerID = listing.id
         normalizeOwners()
+        Task { await mirrorGroup(listing) }
     }
 
     func addParty(_ listing: PartyListing) {
+        let moderation = ModerationService().evaluate([listing.name, listing.vibe, listing.about, listing.contact])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            return
+        }
+
         parties.insert(listing, at: 0)
         partyFilters.ownerID = listing.id
         normalizeOwners()
+        Task { await mirrorParty(listing) }
     }
 
     func swipeGroupCandidate(_ choice: DecisionRecord.Choice) {
         guard let owner = groupOwner, let candidate = groupBrowseCandidates.first else { return }
         decisions.append(DecisionRecord(context: .groupBrowsing, ownerID: owner.id, targetID: candidate.entry.id, choice: choice))
+        Task { await mirrorSwipe(ownerID: owner.id, targetID: candidate.entry.id, context: .groupBrowsing, choice: choice) }
 
         if choice == .connect {
             addMatch(group: owner, party: candidate.entry, score: candidate.score, initiatedBy: "group")
@@ -167,6 +189,7 @@ final class QuestBondStore: ObservableObject {
     func swipePartyCandidate(_ choice: DecisionRecord.Choice) {
         guard let owner = partyOwner, let candidate = partyBrowseCandidates.first else { return }
         decisions.append(DecisionRecord(context: .partyBrowsing, ownerID: owner.id, targetID: candidate.entry.id, choice: choice))
+        Task { await mirrorSwipe(ownerID: owner.id, targetID: candidate.entry.id, context: .partyBrowsing, choice: choice) }
 
         if choice == .connect {
             addMatch(group: candidate.entry, party: owner, score: candidate.score, initiatedBy: "party")
@@ -196,18 +219,20 @@ final class QuestBondStore: ObservableObject {
 
     func blockMatch(in thread: ChatThread, reason: String = "Blocked from chat") {
         guard !blocks.contains(where: { $0.blockedName == thread.groupName || $0.blockedName == thread.partyName }) else { return }
-        blocks.append(BlockRecord(blockedName: "\(thread.groupName) + \(thread.partyName)", reason: reason))
+        let block = BlockRecord(blockedName: "\(thread.groupName) + \(thread.partyName)", reason: reason)
+        blocks.append(block)
+        Task { await mirrorBlock(block) }
     }
 
     func reportThread(_ thread: ChatThread, reason: String, details: String = "") {
-        reports.append(
-            ReportRecord(
-                subject: .message,
-                targetName: "\(thread.groupName) + \(thread.partyName)",
-                reason: reason,
-                details: details
-            )
+        let report = ReportRecord(
+            subject: .message,
+            targetName: "\(thread.groupName) + \(thread.partyName)",
+            reason: reason,
+            details: details
         )
+        reports.append(report)
+        Task { await mirrorReport(report) }
     }
 
     func messages(for thread: ChatThread) -> [ChatMessage] {
@@ -219,9 +244,51 @@ final class QuestBondStore: ObservableObject {
     func sendMessage(_ text: String, in thread: ChatThread) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let moderation = ModerationService().evaluate([trimmed])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This message needs moderation before sending."
+            return
+        }
 
-        messages.append(ChatMessage(threadID: thread.id, sender: .me, text: trimmed))
+        let message = ChatMessage(threadID: thread.id, sender: .me, text: trimmed)
+        messages.append(message)
         touchThread(thread.id)
+        Task { await mirrorMessage(message) }
+    }
+
+    func configureBackend(accessTokenProvider: @escaping () -> String?, userIDProvider: @escaping () -> UUID?) {
+        repository = SupabaseQuestBondRepository(accessTokenProvider: accessTokenProvider, userIDProvider: userIDProvider)
+        backendStatus = "Supabase configured"
+    }
+
+    func loadBackendData() async {
+        guard let repository else { return }
+        do {
+            currentUser = try await repository.loadProfile()
+            let loaded = try await repository.loadListings()
+            if !loaded.0.isEmpty || !loaded.1.isEmpty {
+                groups = loaded.0
+                parties = loaded.1
+            }
+            backendStatus = "Synced with Supabase"
+            normalizeOwners()
+        } catch {
+            backendStatus = "Supabase sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    func registerPushToken(_ token: String?, auth: AuthSessionStore) async {
+        await auth.registerPushTokenIfNeeded(token)
+    }
+
+    func saveProfileToBackend(auth: AuthSessionStore) async {
+        guard let accessToken = auth.accessToken, let userID = auth.userID else { return }
+        do {
+            _ = try await SupabaseClient().updateProfile(currentUser.payload(userID: userID), accessToken: accessToken)
+            backendStatus = "Profile synced"
+        } catch {
+            backendStatus = "Profile sync failed: \(error.localizedDescription)"
+        }
     }
 
     func sendPrompt(_ text: String, in thread: ChatThread) {
@@ -274,6 +341,89 @@ final class QuestBondStore: ObservableObject {
         decisions.contains {
             $0.context == context && $0.ownerID == ownerID && $0.targetID == targetID
         }
+    }
+
+    private func mirrorGroup(_ listing: GroupListing) async {
+        guard let repository else { return }
+        do {
+            _ = try await repository.save(group: listing)
+            backendStatus = "Group synced"
+        } catch {
+            backendStatus = "Group sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorParty(_ listing: PartyListing) async {
+        guard let repository else { return }
+        do {
+            _ = try await repository.save(party: listing)
+            backendStatus = "Party synced"
+        } catch {
+            backendStatus = "Party sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorMessage(_ message: ChatMessage) async {
+        guard let repository else { return }
+        do {
+            try await repository.send(message: message)
+            backendStatus = "Message synced"
+        } catch {
+            backendStatus = "Message sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorReport(_ report: ReportRecord) async {
+        guard let repository else { return }
+        do {
+            try await repository.report(report)
+            backendStatus = "Report synced"
+        } catch {
+            backendStatus = "Report sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorBlock(_ block: BlockRecord) async {
+        guard let repository else { return }
+        do {
+            try await repository.block(block)
+            backendStatus = "Block synced"
+        } catch {
+            backendStatus = "Block sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorSwipe(ownerID: UUID, targetID: UUID, context: DecisionRecord.ViewContext, choice: DecisionRecord.Choice) async {
+        guard let repository else { return }
+        do {
+            try await repository.recordSwipe(ownerID: ownerID, targetID: targetID, context: context, choice: choice)
+            backendStatus = "Swipe synced"
+        } catch {
+            backendStatus = "Swipe sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func isWithinDistance(
+        ownerLatitude: Double?,
+        ownerLongitude: Double?,
+        targetLatitude: Double?,
+        targetLongitude: Double?,
+        maximumMiles: Double
+    ) -> Bool {
+        guard let ownerLatitude, let ownerLongitude, let targetLatitude, let targetLongitude else { return true }
+        let distance = Self.distanceMiles(fromLatitude: ownerLatitude, fromLongitude: ownerLongitude, toLatitude: targetLatitude, toLongitude: targetLongitude)
+        return distance <= maximumMiles
+    }
+
+    private static func distanceMiles(fromLatitude: Double, fromLongitude: Double, toLatitude: Double, toLongitude: Double) -> Double {
+        let earthRadiusMiles = 3958.7613
+        let lat1 = fromLatitude * .pi / 180
+        let lat2 = toLatitude * .pi / 180
+        let deltaLat = (toLatitude - fromLatitude) * .pi / 180
+        let deltaLon = (toLongitude - fromLongitude) * .pi / 180
+        let a = sin(deltaLat / 2) * sin(deltaLat / 2)
+            + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
+        return earthRadiusMiles * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
     private func normalizeOwners() {

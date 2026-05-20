@@ -24,6 +24,9 @@
 		1A2B3C4D5E6F700000000040 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */; };
 		1A2B3C4D5E6F700000000042 /* SupabaseClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */; };
 		1A2B3C4D5E6F700000000044 /* SupabaseBackendServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */; };
+		1A2B3C4D5E6F700000000046 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */; };
+		1A2B3C4D5E6F700000000048 /* ModerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000049 /* ModerationService.swift */; };
+		1A2B3C4D5E6F70000000004A /* SupabaseRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +59,9 @@
 		1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config/SupabaseConfig.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseBackendServices.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AuthSessionStore.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000049 /* ModerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ModerationService.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SupabaseRealtimeService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +109,9 @@
 				1A2B3C4D5E6F700000000041 /* SupabaseConfig.swift */,
 				1A2B3C4D5E6F700000000043 /* SupabaseClient.swift */,
 				1A2B3C4D5E6F700000000045 /* SupabaseBackendServices.swift */,
+				1A2B3C4D5E6F700000000047 /* AuthSessionStore.swift */,
+				1A2B3C4D5E6F700000000049 /* ModerationService.swift */,
+				1A2B3C4D5E6F70000000004B /* SupabaseRealtimeService.swift */,
 				1A2B3C4D5E6F700000000013 /* Assets.xcassets */,
 			);
 			path = QuestBond;
@@ -239,6 +248,9 @@
 				1A2B3C4D5E6F700000000040 /* SupabaseConfig.swift in Sources */,
 				1A2B3C4D5E6F700000000042 /* SupabaseClient.swift in Sources */,
 				1A2B3C4D5E6F700000000044 /* SupabaseBackendServices.swift in Sources */,
+				1A2B3C4D5E6F700000000046 /* AuthSessionStore.swift in Sources */,
+				1A2B3C4D5E6F700000000048 /* ModerationService.swift in Sources */,
+				1A2B3C4D5E6F70000000004A /* SupabaseRealtimeService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

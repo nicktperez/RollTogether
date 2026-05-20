@@ -110,6 +110,8 @@ struct GroupListing: Identifiable, Codable, Equatable {
     var name: String
     var mode: SessionMode
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var openSlots: Int
     var campaignStyle: CampaignStyle
     var tableExperience: ExperienceLevel
@@ -129,6 +131,8 @@ struct PartyListing: Identifiable, Codable, Equatable {
     var partySize: Int
     var mode: SessionMode
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var experience: ExperienceLevel
     var rolesCovered: [PartyRole]
     var lookingForCampaign: CampaignStyle
@@ -145,6 +149,8 @@ struct UserProfile: Identifiable, Codable, Equatable {
     var displayName: String
     var handle: String
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var bio: String
     var favoriteRole: PartyRole
     var preferredMode: SessionMode

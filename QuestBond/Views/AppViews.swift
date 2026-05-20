@@ -1,30 +1,145 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @EnvironmentObject private var store: QuestBondStore
     @AppStorage("questbond.hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
-        TabView {
-            DiscoverView()
-                .tabItem {
-                    Label("Discover", systemImage: "rectangle.stack.person.crop")
-                }
+        Group {
+            if auth.isAuthenticated {
+                TabView {
+                    DiscoverView()
+                        .tabItem {
+                            Label("Discover", systemImage: "rectangle.stack.person.crop")
+                        }
 
-            ChatsView()
-                .tabItem {
-                    Label("Chats", systemImage: "bubble.left.and.bubble.right")
-                }
+                    ChatsView()
+                        .tabItem {
+                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                        }
 
-            MoreView(hasCompletedOnboarding: $hasCompletedOnboarding)
-                .tabItem {
-                    Label("More", systemImage: "ellipsis")
+                    MoreView(hasCompletedOnboarding: $hasCompletedOnboarding)
+                        .tabItem {
+                            Label("More", systemImage: "ellipsis")
+                        }
                 }
-        }
-        .tint(.questPrimary)
-        .fullScreenCover(isPresented: Binding(get: { !hasCompletedOnboarding }, set: { hasCompletedOnboarding = !$0 })) {
-            OnboardingView {
-                hasCompletedOnboarding = true
+                .tint(.questPrimary)
+                .fullScreenCover(isPresented: Binding(get: { !hasCompletedOnboarding }, set: { hasCompletedOnboarding = !$0 })) {
+                    OnboardingView {
+                        hasCompletedOnboarding = true
+                    }
+                }
+                .task(id: auth.accessToken) {
+                    store.configureBackend(accessTokenProvider: { auth.accessToken }, userIDProvider: { auth.userID })
+                    await store.loadBackendData()
+                    await store.registerPushToken(NotificationRegistrationService.shared.deviceToken, auth: auth)
+                }
+            } else {
+                AuthView()
             }
+        }
+        .alert("Moderation", isPresented: Binding(get: { store.moderationWarning != nil }, set: { if !$0 { store.moderationWarning = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(store.moderationWarning ?? "")
+        }
+    }
+}
+
+struct AuthView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var email = ""
+    @State private var password = ""
+    @State private var displayName = ""
+    @State private var isCreatingAccount = false
+
+    var body: some View {
+        ZStack {
+            QuestBackground()
+
+            VStack(spacing: 20) {
+                Spacer()
+
+                Image("QuestBondMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 112)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.questBrass.opacity(0.65), lineWidth: 1))
+
+                VStack(spacing: 8) {
+                    Text("RollTogether")
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(Color.questParchment)
+                    Text("Sign in to sync listings, matches, chats, reports, and notifications.")
+                        .font(.body)
+                        .foregroundStyle(Color.questMutedText)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 12) {
+                    if isCreatingAccount {
+                        TextField("Display name", text: $displayName)
+                            .textContentType(.name)
+                            .textInputAutocapitalization(.words)
+                    }
+
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    SecureField("Password", text: $password)
+                        .textContentType(isCreatingAccount ? .newPassword : .password)
+                }
+                .textFieldStyle(.roundedBorder)
+
+                if let lastError = auth.lastError {
+                    Text(lastError)
+                        .font(.footnote)
+                        .foregroundStyle(lastError.contains("requested") ? Color.questBrass : .red)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button {
+                    Task {
+                        if isCreatingAccount {
+                            await auth.signUp(email: email, password: password, displayName: displayName.isEmpty ? "New Adventurer" : displayName)
+                        } else {
+                            await auth.signIn(email: email, password: password)
+                        }
+                    }
+                } label: {
+                    Text(auth.isWorking ? "Working..." : (isCreatingAccount ? "Create Account" : "Sign In"))
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.questBrass)
+                .foregroundStyle(Color.questInk)
+                .disabled(auth.isWorking || email.isEmpty || password.count < 6)
+
+                HStack {
+                    Button(isCreatingAccount ? "Have an account? Sign in" : "Create account") {
+                        isCreatingAccount.toggle()
+                    }
+
+                    Spacer()
+
+                    Button("Reset password") {
+                        Task { await auth.recoverPassword(email: email) }
+                    }
+                    .disabled(email.isEmpty)
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.questBrass)
+
+                Spacer()
+            }
+            .padding(24)
         }
     }
 }
@@ -943,7 +1058,7 @@ struct CreateGroupView: View {
                     Picker("Session", selection: $draft.mode) {
                         ForEach([SessionMode.online, .inPerson, .hybrid]) { Text($0.label).tag($0) }
                     }
-                    LocationField(title: "Location or time zone", text: $draft.location)
+                    LocationField(title: "Location or time zone", text: $draft.location, latitude: $draft.latitude, longitude: $draft.longitude)
                     Stepper("Open slots: \(draft.openSlots)", value: $draft.openSlots, in: 1...8)
                     TextField("Schedule", text: $draft.schedule)
                 }
@@ -996,7 +1111,7 @@ struct CreatePartyView: View {
                     Picker("Session", selection: $draft.mode) {
                         ForEach([SessionMode.online, .inPerson, .hybrid]) { Text($0.label).tag($0) }
                     }
-                    LocationField(title: "Location or time zone", text: $draft.location)
+                    LocationField(title: "Location or time zone", text: $draft.location, latitude: $draft.latitude, longitude: $draft.longitude)
                     TextField("Schedule", text: $draft.schedule)
                 }
 
@@ -1036,6 +1151,8 @@ struct GroupDraft {
     var name = ""
     var mode: SessionMode = .online
     var location = ""
+    var latitude: Double?
+    var longitude: Double?
     var openSlots = 1
     var campaignStyle: CampaignStyle = .heroic
     var tableExperience: ExperienceLevel = .new
@@ -1056,6 +1173,8 @@ struct GroupDraft {
             name: name,
             mode: mode,
             location: location,
+            latitude: latitude,
+            longitude: longitude,
             openSlots: openSlots,
             campaignStyle: campaignStyle,
             tableExperience: tableExperience,
@@ -1075,6 +1194,8 @@ struct PartyDraft {
     var partySize = 1
     var mode: SessionMode = .online
     var location = ""
+    var latitude: Double?
+    var longitude: Double?
     var experience: ExperienceLevel = .new
     var rolesCovered: [PartyRole] = []
     var lookingForCampaign: CampaignStyle = .any
@@ -1094,6 +1215,8 @@ struct PartyDraft {
             partySize: partySize,
             mode: mode,
             location: location,
+            latitude: latitude,
+            longitude: longitude,
             experience: experience,
             rolesCovered: rolesCovered,
             lookingForCampaign: lookingForCampaign,
@@ -1136,6 +1259,8 @@ struct RoleSelection: View {
 struct LocationField: View {
     var title: String
     @Binding var text: String
+    @Binding var latitude: Double?
+    @Binding var longitude: Double?
     @StateObject private var search = LocationSearchService()
 
     var body: some View {
@@ -1150,6 +1275,12 @@ struct LocationField: View {
                     Button {
                         text = suggestion
                         search.query = ""
+                        Task {
+                            if let coordinate = await search.geocode(suggestion) {
+                                latitude = coordinate.latitude
+                                longitude = coordinate.longitude
+                            }
+                        }
                     } label: {
                         Label(suggestion, systemImage: "mappin.and.ellipse")
                             .font(.caption)
@@ -1157,6 +1288,12 @@ struct LocationField: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                 }
+            }
+
+            if let latitude, let longitude {
+                Text("Coordinates saved: \(latitude.formatted(.number.precision(.fractionLength(3)))), \(longitude.formatted(.number.precision(.fractionLength(3))))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -1258,8 +1395,10 @@ struct MatchesView: View {
 
 struct MoreView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
     @Binding var hasCompletedOnboarding: Bool
     @State private var confirmingDelete = false
+    @State private var deleteReason = "User requested deletion from iOS app"
 
     var body: some View {
         NavigationStack {
@@ -1278,6 +1417,11 @@ struct MoreView: View {
                             Text(store.currentUser.handle)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                            if let email = auth.email {
+                                Text(email)
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
@@ -1318,6 +1462,10 @@ struct MoreView: View {
                 }
 
                 Section("Backend Readiness") {
+                    Text(store.backendStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     BackendStatusView()
 
                     NavigationLink {
@@ -1336,6 +1484,12 @@ struct MoreView: View {
                 }
 
                 Section("Account") {
+                    Button {
+                        auth.signOut()
+                    } label: {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+
                     Button(role: .destructive) {
                         confirmingDelete = true
                     } label: {
@@ -1344,14 +1498,18 @@ struct MoreView: View {
                 }
             }
             .navigationTitle("More")
-            .alert("Delete local account?", isPresented: $confirmingDelete) {
-                Button("Delete", role: .destructive) {
-                    store.deleteLocalAccount()
-                    hasCompletedOnboarding = false
+            .alert("Delete account?", isPresented: $confirmingDelete) {
+                TextField("Reason optional", text: $deleteReason)
+                Button("Delete Everywhere", role: .destructive) {
+                    Task {
+                        await auth.deleteAccount(reason: deleteReason)
+                        store.deleteLocalAccount()
+                        hasCompletedOnboarding = false
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This removes local profile data, listings, matches, chats, and decisions from this device. Backend deletion will be wired when Supabase auth is connected.")
+                Text("This requests backend account deletion through Supabase, then clears local profile data, listings, matches, chats, and decisions from this device.")
             }
         }
     }
@@ -1478,6 +1636,7 @@ struct RoadmapRow: View {
 
 struct ProfileView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
 
     var body: some View {
         NavigationStack {
@@ -1502,7 +1661,12 @@ struct ProfileView: View {
                 }
 
                 Section("Profile") {
-                    TextField("Location", text: $store.currentUser.location)
+                    LocationField(
+                        title: "Location",
+                        text: $store.currentUser.location,
+                        latitude: $store.currentUser.latitude,
+                        longitude: $store.currentUser.longitude
+                    )
                     TextField("Bio", text: $store.currentUser.bio, axis: .vertical)
                         .lineLimit(2...5)
                     Picker("Favorite role", selection: $store.currentUser.favoriteRole) {
@@ -1522,10 +1686,18 @@ struct ProfileView: View {
                         .lineLimit(2...5)
                 }
 
+                Section("Sync") {
+                    Button {
+                        Task { await store.saveProfileToBackend(auth: auth) }
+                    } label: {
+                        Label("Save Profile to Supabase", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+
                 Section("Social Roadmap") {
                     Label("Private chat is created after connecting.", systemImage: "bubble.left.and.bubble.right")
                     Label("Public contact info stays hidden by default.", systemImage: "lock")
-                    Label("Reports, blocks, and account auth belong in the backend phase.", systemImage: "shield")
+                    Label("Reports, blocks, and account auth now sync through Supabase.", systemImage: "shield")
                 }
             }
             .navigationTitle("Profile")
