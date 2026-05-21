@@ -157,6 +157,28 @@ struct UserProfile: Identifiable, Codable, Equatable {
     var safetyNote: String
 }
 
+struct SessionZeroProfile: Codable, Equatable {
+    var tone = "Heroic with room for drama"
+    var safetyTools = "Session Zero, lines and veils, open door"
+    var rulesStyle = "Rules-aware, story-forward"
+    var homebrewComfort = "Ask first"
+    var scheduleReliability = "Weekly if the table commits"
+    var contactBoundary = "Chat first, share Discord after mutual fit"
+}
+
+struct ProfileStrength: Equatable {
+    var score: Int
+    var missingItems: [String]
+
+    var label: String {
+        switch score {
+        case 90...100: "Ready for discovery"
+        case 65..<90: "Almost ready"
+        default: "Needs detail"
+        }
+    }
+}
+
 struct MatchRecord: Identifiable, Codable, Equatable {
     var id = UUID()
     var groupID: UUID
@@ -214,6 +236,33 @@ struct ReportRecord: Identifiable, Codable, Equatable {
     var createdAt: Date = .now
 }
 
+struct PostSessionFeedback: Identifiable, Codable, Equatable {
+    enum Sentiment: String, Codable, CaseIterable, Identifiable {
+        case greatFit
+        case okayFit
+        case notAFit
+        case safetyConcern
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .greatFit: "Great fit"
+            case .okayFit: "Okay fit"
+            case .notAFit: "Not a fit"
+            case .safetyConcern: "Safety concern"
+            }
+        }
+    }
+
+    var id = UUID()
+    var threadID: UUID
+    var sentiment: Sentiment
+    var wouldPlayAgain: Bool
+    var notes: String
+    var createdAt: Date = .now
+}
+
 struct DecisionRecord: Identifiable, Codable, Equatable {
     enum ViewContext: String, Codable {
         case groupBrowsing
@@ -253,6 +302,23 @@ struct PartyBrowseFilters: Codable, Equatable {
     var postMode: SessionMode = .any
     var postExperience: ExperienceLevel = .any
     var query = ""
+}
+
+struct SavedSearch: Identifiable, Codable, Equatable {
+    enum SearchKind: String, Codable {
+        case group
+        case party
+    }
+
+    var id = UUID()
+    var name: String
+    var kind: SearchKind
+    var summary: String
+    var candidateCount: Int
+    var alertsEnabled: Bool
+    var createdAt: Date = .now
+    var groupFilters: GroupBrowseFilters?
+    var partyFilters: PartyBrowseFilters?
 }
 
 struct Candidate<Entry: Identifiable> {

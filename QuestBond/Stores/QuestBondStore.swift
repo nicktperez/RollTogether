@@ -38,6 +38,18 @@ final class QuestBondStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published var feedback: [PostSessionFeedback] {
+        didSet { save() }
+    }
+
+    @Published var savedSearches: [SavedSearch] {
+        didSet { save() }
+    }
+
+    @Published var sessionZero: SessionZeroProfile {
+        didSet { save() }
+    }
+
     @Published var groupFilters: GroupBrowseFilters {
         didSet { save() }
     }
@@ -64,6 +76,9 @@ final class QuestBondStore: ObservableObject {
             decisions = saved.decisions
             blocks = saved.blocks
             reports = saved.reports
+            feedback = saved.feedback
+            savedSearches = saved.savedSearches
+            sessionZero = saved.sessionZero
             groupFilters = saved.groupFilters
             partyFilters = saved.partyFilters
         } else {
@@ -76,6 +91,9 @@ final class QuestBondStore: ObservableObject {
             decisions = []
             blocks = []
             reports = []
+            feedback = []
+            savedSearches = []
+            sessionZero = SeedData.sessionZero
             groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
             partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
         }
@@ -89,6 +107,29 @@ final class QuestBondStore: ObservableObject {
 
     var partyOwner: PartyListing? {
         parties.first { $0.id == partyFilters.ownerID }
+    }
+
+    var profileStrength: ProfileStrength {
+        var score = 0
+        var missing: [String] = []
+
+        func add(_ points: Int, when condition: Bool, missing label: String) {
+            if condition {
+                score += points
+            } else {
+                missing.append(label)
+            }
+        }
+
+        add(15, when: !currentUser.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "display name")
+        add(10, when: !currentUser.handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "handle")
+        add(15, when: !currentUser.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "location")
+        add(20, when: currentUser.bio.count >= 40, missing: "longer bio")
+        add(15, when: !currentUser.safetyNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "safety note")
+        add(15, when: !sessionZero.tone.isEmpty && !sessionZero.safetyTools.isEmpty && !sessionZero.rulesStyle.isEmpty, missing: "Session Zero answers")
+        add(10, when: !groups.isEmpty || !parties.isEmpty, missing: "at least one listing")
+
+        return ProfileStrength(score: min(score, 100), missingItems: missing)
     }
 
     var groupBrowseCandidates: [Candidate<PartyListing>] {
@@ -224,6 +265,9 @@ final class QuestBondStore: ObservableObject {
         decisions = []
         blocks = []
         reports = []
+        feedback = []
+        savedSearches = []
+        sessionZero = SeedData.sessionZero
         groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
         partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
     }
@@ -325,6 +369,92 @@ final class QuestBondStore: ObservableObject {
 
     func sendPrompt(_ text: String, in thread: ChatThread) {
         sendMessage(text, in: thread)
+    }
+
+    func saveCurrentGroupSearch(named name: String? = nil) {
+        let searchName = sanitizedSearchName(name, fallback: groupOwner?.name ?? "Group Search")
+        let summary = "\(groupFilters.preMode.label), \(groupFilters.preExperience.label), \(groupFilters.maximumDistanceMiles) mi"
+        upsertSavedSearch(
+            SavedSearch(
+                name: searchName,
+                kind: .group,
+                summary: summary,
+                candidateCount: groupBrowseCandidates.count,
+                alertsEnabled: true,
+                groupFilters: groupFilters
+            )
+        )
+    }
+
+    func saveCurrentPartySearch(named name: String? = nil) {
+        let searchName = sanitizedSearchName(name, fallback: partyOwner?.name ?? "Party Search")
+        let summary = "\(partyFilters.preMode.label), \(partyFilters.preCampaign.label), \(partyFilters.maximumDistanceMiles) mi"
+        upsertSavedSearch(
+            SavedSearch(
+                name: searchName,
+                kind: .party,
+                summary: summary,
+                candidateCount: partyBrowseCandidates.count,
+                alertsEnabled: true,
+                partyFilters: partyFilters
+            )
+        )
+    }
+
+    func toggleSavedSearchAlerts(_ search: SavedSearch) {
+        guard let index = savedSearches.firstIndex(where: { $0.id == search.id }) else { return }
+        savedSearches[index].alertsEnabled.toggle()
+    }
+
+    func applySavedSearch(_ search: SavedSearch) {
+        switch search.kind {
+        case .group:
+            if let filters = search.groupFilters { groupFilters = filters }
+        case .party:
+            if let filters = search.partyFilters { partyFilters = filters }
+        }
+    }
+
+    func deleteSavedSearches(at offsets: IndexSet) {
+        savedSearches.remove(atOffsets: offsets)
+    }
+
+    func submitFeedback(thread: ChatThread, sentiment: PostSessionFeedback.Sentiment, wouldPlayAgain: Bool, notes: String) {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        feedback.insert(PostSessionFeedback(threadID: thread.id, sentiment: sentiment, wouldPlayAgain: wouldPlayAgain, notes: trimmed), at: 0)
+
+        if sentiment == .safetyConcern {
+            reportThread(thread, reason: "Post-session safety concern", details: trimmed)
+        }
+    }
+
+    func match(for thread: ChatThread) -> MatchRecord? {
+        matches.first { $0.id == thread.matchID }
+    }
+
+    func group(for thread: ChatThread) -> GroupListing? {
+        guard let match = match(for: thread) else { return nil }
+        return groups.first { $0.id == match.groupID }
+    }
+
+    func party(for thread: ChatThread) -> PartyListing? {
+        guard let match = match(for: thread) else { return nil }
+        return parties.first { $0.id == match.partyID }
+    }
+
+    func candidateComparisonRows() -> [OrganizerComparisonRow] {
+        groupBrowseCandidates.prefix(8).map { candidate in
+            let party = candidate.entry
+            return OrganizerComparisonRow(
+                name: party.name,
+                fitScore: candidate.score,
+                size: MatchingService.partySizeLabel(party.partySize),
+                availability: party.schedule.isEmpty ? "Flexible" : party.schedule,
+                roles: party.rolesCovered.isEmpty ? "Roles open" : party.rolesCovered.map(\.label).joined(separator: ", "),
+                mode: party.mode.label,
+                notes: candidate.reasons.joined(separator: " | ")
+            )
+        }
     }
 
     private func addMatch(group: GroupListing, party: PartyListing, score: Int, initiatedBy: String) {
@@ -513,6 +643,9 @@ final class QuestBondStore: ObservableObject {
             decisions: decisions,
             blocks: blocks,
             reports: reports,
+            feedback: feedback,
+            savedSearches: savedSearches,
+            sessionZero: sessionZero,
             groupFilters: groupFilters,
             partyFilters: partyFilters
         )
@@ -526,6 +659,29 @@ final class QuestBondStore: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder.questBond.decode(PersistedState.self, from: data)
     }
+
+    private func upsertSavedSearch(_ search: SavedSearch) {
+        savedSearches.removeAll { existing in
+            existing.kind == search.kind && existing.name.localizedCaseInsensitiveCompare(search.name) == .orderedSame
+        }
+        savedSearches.insert(search, at: 0)
+    }
+
+    private func sanitizedSearchName(_ name: String?, fallback: String) -> String {
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+}
+
+struct OrganizerComparisonRow: Identifiable, Equatable {
+    var id: String { name + availability + roles }
+    var name: String
+    var fitScore: Int
+    var size: String
+    var availability: String
+    var roles: String
+    var mode: String
+    var notes: String
 }
 
 private struct PersistedState: Codable {
@@ -538,6 +694,9 @@ private struct PersistedState: Codable {
     var decisions: [DecisionRecord]
     var blocks: [BlockRecord] = []
     var reports: [ReportRecord] = []
+    var feedback: [PostSessionFeedback] = []
+    var savedSearches: [SavedSearch] = []
+    var sessionZero: SessionZeroProfile = SeedData.sessionZero
     var groupFilters: GroupBrowseFilters
     var partyFilters: PartyBrowseFilters
 }

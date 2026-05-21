@@ -159,6 +159,7 @@ struct AuthView: View {
 }
 
 struct OnboardingView: View {
+    @EnvironmentObject private var store: QuestBondStore
     var complete: () -> Void
 
     var body: some View {
@@ -195,6 +196,8 @@ struct OnboardingView: View {
                     OnboardingPoint(icon: "plus.circle", title: "Start another search", text: "Use + for different roles, schedules, or styles.")
                     OnboardingPoint(icon: "bubble.left.and.bubble.right", title: "Chat after connecting", text: "Ask Session Zero questions first.")
                 }
+
+                SessionZeroCompactEditor(profile: $store.sessionZero)
 
                 Spacer()
 
@@ -247,6 +250,31 @@ struct OnboardingPoint: View {
     }
 }
 
+struct SessionZeroCompactEditor: View {
+    @Binding var profile: SessionZeroProfile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Session Zero Fit", systemImage: "shield.lefthalf.filled")
+                .font(.headline)
+                .foregroundStyle(Color.questParchment)
+
+            TextField("Tone", text: $profile.tone)
+                .textFieldStyle(.roundedBorder)
+            TextField("Safety tools", text: $profile.safetyTools)
+                .textFieldStyle(.roundedBorder)
+            TextField("Rules style", text: $profile.rulesStyle)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(14)
+        .background(Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questBrass.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
 struct DiscoverView: View {
     enum Mode: String, CaseIterable, Identifiable {
         case groupsBrowse = "Groups Browse"
@@ -265,6 +293,7 @@ struct DiscoverView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         BrandHero()
+                        ProfileStrengthCard()
                         StatsStrip()
 
                         Picker("Browse Mode", selection: $mode) {
@@ -442,6 +471,7 @@ struct PartyBrowsingView: View {
 
 struct GroupBrowseFilterForm: View {
     @EnvironmentObject private var store: QuestBondStore
+    @State private var saved = false
 
     var body: some View {
         FilterPanel(title: "Group Search") {
@@ -473,12 +503,22 @@ struct GroupBrowseFilterForm: View {
 
             TextField("Search name, location, vibe", text: $store.groupFilters.query)
                 .textInputAutocapitalization(.words)
+
+            Button {
+                store.saveCurrentGroupSearch()
+                saved = true
+            } label: {
+                Label(saved ? "Saved Search" : "Save Search + Alerts", systemImage: saved ? "checkmark.circle.fill" : "bell.badge")
+            }
+            .buttonStyle(.bordered)
+            .tint(.questPrimary)
         }
     }
 }
 
 struct PartyBrowseFilterForm: View {
     @EnvironmentObject private var store: QuestBondStore
+    @State private var saved = false
 
     var body: some View {
         FilterPanel(title: "Party Search") {
@@ -510,6 +550,15 @@ struct PartyBrowseFilterForm: View {
 
             TextField("Search name, location, style", text: $store.partyFilters.query)
                 .textInputAutocapitalization(.words)
+
+            Button {
+                store.saveCurrentPartySearch()
+                saved = true
+            } label: {
+                Label(saved ? "Saved Search" : "Save Search + Alerts", systemImage: saved ? "checkmark.circle.fill" : "bell.badge")
+            }
+            .buttonStyle(.bordered)
+            .tint(.questPrimary)
         }
     }
 }
@@ -799,6 +848,40 @@ struct ChatsView: View {
     }
 }
 
+struct ProfileStrengthCard: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        let strength = store.profileStrength
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(strength.label, systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.headline)
+                    .foregroundStyle(Color.questParchment)
+                Spacer()
+                Text("\(strength.score)%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(Color.questBrass)
+            }
+
+            ProgressView(value: Double(strength.score), total: 100)
+                .tint(.questBrass)
+
+            if !strength.missingItems.isEmpty {
+                Text("Add \(strength.missingItems.prefix(3).joined(separator: ", ")) to improve match trust.")
+                    .font(.caption)
+                    .foregroundStyle(Color.questMutedText)
+            }
+        }
+        .padding(14)
+        .background(Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questBrass.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
 struct ChatThreadRow: View {
     var thread: ChatThread
     var lastMessage: ChatMessage?
@@ -838,6 +921,7 @@ struct ChatDetailView: View {
     var thread: ChatThread
     @State private var draft = ""
     @State private var showingReport = false
+    @State private var showingFeedback = false
     @State private var showingBlockConfirmation = false
 
     private var activeThread: ChatThread {
@@ -850,6 +934,7 @@ struct ChatDetailView: View {
 
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    MatchContextCards(thread: activeThread)
                     ForEach(store.messages(for: activeThread)) { message in
                         ChatBubble(message: message)
                     }
@@ -898,12 +983,21 @@ struct ChatDetailView: View {
                 } label: {
                     Label("Block", systemImage: "nosign")
                 }
+
+                Button {
+                    showingFeedback = true
+                } label: {
+                    Label("Post-Session Feedback", systemImage: "checklist")
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
         }
         .sheet(isPresented: $showingReport) {
             ReportThreadView(thread: activeThread)
+        }
+        .sheet(isPresented: $showingFeedback) {
+            PostSessionFeedbackView(thread: activeThread)
         }
         .alert("Block this match?", isPresented: $showingBlockConfirmation) {
             Button("Block", role: .destructive) {
@@ -912,6 +1006,114 @@ struct ChatDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This adds the match to your local blocked list. Backend enforcement will sync when Supabase is connected.")
+        }
+    }
+}
+
+struct MatchContextCards: View {
+    @EnvironmentObject private var store: QuestBondStore
+    var thread: ChatThread
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let group = store.group(for: thread) {
+                ContextCard(
+                    title: group.name,
+                    subtitle: "Table looking for \(group.openSlots) player\(group.openSlots == 1 ? "" : "s")",
+                    tags: [group.mode.label, group.campaignStyle.label, group.schedule],
+                    detail: group.about.isEmpty ? group.characterVibe : group.about
+                )
+            }
+
+            if let party = store.party(for: thread) {
+                ContextCard(
+                    title: party.name,
+                    subtitle: "\(MatchingService.partySizeLabel(party.partySize)) looking for a table",
+                    tags: [party.mode.label, party.experience.label, party.schedule],
+                    detail: party.about.isEmpty ? party.vibe : party.about
+                )
+            }
+
+            ContextCard(
+                title: "Session Zero Notes",
+                subtitle: "Use this before sharing outside contact info",
+                tags: [store.sessionZero.tone, store.sessionZero.rulesStyle],
+                detail: store.sessionZero.safetyTools
+            )
+        }
+    }
+}
+
+struct ContextCard: View {
+    var title: String
+    var subtitle: String
+    var tags: [String]
+    var detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TagCloud(tags: tags.filter { !$0.isEmpty })
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.questSurface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questLine, lineWidth: 1)
+        )
+    }
+}
+
+struct PostSessionFeedbackView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: QuestBondStore
+    var thread: ChatThread
+    @State private var sentiment: PostSessionFeedback.Sentiment = .greatFit
+    @State private var wouldPlayAgain = true
+    @State private var notes = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("How did it go?") {
+                    Picker("Fit", selection: $sentiment) {
+                        ForEach(PostSessionFeedback.Sentiment.allCases) { sentiment in
+                            Text(sentiment.label).tag(sentiment)
+                        }
+                    }
+                    Toggle("Would play again", isOn: $wouldPlayAgain)
+                }
+
+                Section("Private Notes") {
+                    TextField("What should you remember?", text: $notes, axis: .vertical)
+                        .lineLimit(3...7)
+                    Text("Safety concerns also create a local report so moderation can sync later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Table Feedback")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        store.submitFeedback(thread: thread, sentiment: sentiment, wouldPlayAgain: wouldPlayAgain, notes: notes)
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }
@@ -1480,6 +1682,24 @@ struct MoreView: View {
                     } label: {
                         Label("Matches", systemImage: "link")
                     }
+
+                    NavigationLink {
+                        SavedSearchesView()
+                    } label: {
+                        Label("Saved Searches & Alerts", systemImage: "bell.badge")
+                    }
+
+                    NavigationLink {
+                        OrganizerDashboardView()
+                    } label: {
+                        Label("DM Organizer Dashboard", systemImage: "tablecells")
+                    }
+
+                    NavigationLink {
+                        FeedbackHistoryView()
+                    } label: {
+                        Label("Post-Session Feedback", systemImage: "checklist")
+                    }
                 }
 
                 Section("Backend Readiness") {
@@ -1707,6 +1927,33 @@ struct ProfileView: View {
                         .lineLimit(2...5)
                 }
 
+                Section("Session Zero Compatibility") {
+                    TextField("Tone", text: $store.sessionZero.tone)
+                    TextField("Safety tools", text: $store.sessionZero.safetyTools, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("Rules style", text: $store.sessionZero.rulesStyle)
+                    TextField("Homebrew comfort", text: $store.sessionZero.homebrewComfort)
+                    TextField("Schedule reliability", text: $store.sessionZero.scheduleReliability)
+                    TextField("Contact boundary", text: $store.sessionZero.contactBoundary)
+                }
+
+                Section("Profile Strength") {
+                    let strength = store.profileStrength
+                    HStack {
+                        Text(strength.label)
+                        Spacer()
+                        Text("\(strength.score)%")
+                            .monospacedDigit()
+                            .foregroundStyle(Color.questPrimary)
+                    }
+                    ProgressView(value: Double(strength.score), total: 100)
+                    if !strength.missingItems.isEmpty {
+                        Text("Missing: \(strength.missingItems.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Sync") {
                     Button {
                         Task { await store.saveProfileToBackend(auth: auth) }
@@ -1723,6 +1970,147 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
         }
+    }
+}
+
+struct SavedSearchesView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            if store.savedSearches.isEmpty {
+                ContentUnavailableView("No saved searches", systemImage: "bell.badge", description: Text("Save filters from Discover to get ready for match alerts."))
+            } else {
+                ForEach(store.savedSearches) { search in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(search.name)
+                                    .font(.headline)
+                                Text(search.kind == .group ? "Finding players" : "Finding groups")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(search.candidateCount)")
+                                .font(.headline.monospacedDigit())
+                                .foregroundStyle(Color.questPrimary)
+                        }
+
+                        Text(search.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Button {
+                                store.applySavedSearch(search)
+                            } label: {
+                                Label("Apply", systemImage: "line.3.horizontal.decrease.circle")
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                store.toggleSavedSearchAlerts(search)
+                            } label: {
+                                Label(search.alertsEnabled ? "Alerts On" : "Alerts Off", systemImage: search.alertsEnabled ? "bell.fill" : "bell.slash")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(search.alertsEnabled ? .questPrimary : .secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onDelete(perform: store.deleteSavedSearches)
+            }
+        }
+        .navigationTitle("Saved Searches")
+    }
+}
+
+struct OrganizerDashboardView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            Section {
+                if let group = store.groupOwner {
+                    Text("Recruiting for: \(group.name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Use Group Search filters to rank singles, duos, trios, and full parties by role coverage, schedule, mode, and fit score.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Top Player/Party Candidates") {
+                let rows = store.candidateComparisonRows()
+                if rows.isEmpty {
+                    ContentUnavailableView("No candidates", systemImage: "tablecells", description: Text("Adjust Group Search filters or add more listings."))
+                } else {
+                    ForEach(rows) { row in
+                        OrganizerComparisonRowView(row: row)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Organizer")
+    }
+}
+
+struct OrganizerComparisonRowView: View {
+    var row: OrganizerComparisonRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(row.name)
+                    .font(.headline)
+                Spacer()
+                Text("\(row.fitScore)%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(Color.questPrimary)
+            }
+            TagCloud(tags: [row.size, row.mode, row.availability, row.roles])
+            if !row.notes.isEmpty {
+                Text(row.notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct FeedbackHistoryView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            if store.feedback.isEmpty {
+                ContentUnavailableView("No feedback yet", systemImage: "checklist", description: Text("After a session, save private fit notes from the chat menu."))
+            } else {
+                ForEach(store.feedback) { feedback in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(feedback.sentiment.label)
+                            .font(.headline)
+                        Text(feedback.wouldPlayAgain ? "Would play again" : "Would not play again")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if !feedback.notes.isEmpty {
+                            Text(feedback.notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(feedback.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle("Feedback")
     }
 }
 

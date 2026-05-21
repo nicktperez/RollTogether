@@ -49,6 +49,19 @@
 - Add an organizer dashboard for DMs to compare applicants by role, availability, experience, and safety preferences.
 - Add post-session feedback that is private by default and only escalates serious safety issues into moderation.
 
+## Next Product Improvements
+
+- Add onboarding branching so users choose DM, solo player, duo/trio, or flexible before seeing discovery.
+- Add match explainability with weighted compatibility categories instead of one total score.
+- Add availability grid input and overlap scoring.
+- Add listing expiration and stale-listing reminders.
+- Add chat milestones: questions asked, Session Zero complete, contact shared, first session scheduled.
+- Add group invite links for DMs recruiting multiple players into the same campaign.
+- Add saved-search push notification settings once Apple Push Notifications are connected.
+- Add moderation inbox views for blocked, reported, and safety-concern feedback.
+- Add lightweight reputation signals after multiple sessions without public star ratings.
+- Add data export before account deletion for App Store trust and privacy compliance.
+
 ## Engineering
 
 - Split `QuestBondApp.swift` into models, store, matching, and view files.
