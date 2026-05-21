@@ -105,6 +105,64 @@ enum PartyRole: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AvailabilityDay: String, Codable, CaseIterable, Identifiable {
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+
+    var id: String { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .monday: "Mon"
+        case .tuesday: "Tue"
+        case .wednesday: "Wed"
+        case .thursday: "Thu"
+        case .friday: "Fri"
+        case .saturday: "Sat"
+        case .sunday: "Sun"
+        }
+    }
+}
+
+enum AvailabilityWindow: String, Codable, CaseIterable, Identifiable {
+    case morning
+    case afternoon
+    case evening
+    case lateNight
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .morning: "Morning"
+        case .afternoon: "Afternoon"
+        case .evening: "Evening"
+        case .lateNight: "Late"
+        }
+    }
+}
+
+struct AvailabilitySlot: Identifiable, Codable, Hashable {
+    var day: AvailabilityDay
+    var window: AvailabilityWindow
+
+    var id: String { "\(day.rawValue)-\(window.rawValue)" }
+    var label: String { "\(day.shortLabel) \(window.label)" }
+}
+
+struct MatchCategoryScore: Identifiable, Codable, Equatable {
+    var id: String { category }
+    var category: String
+    var score: Int
+    var weight: Int
+    var note: String
+}
+
 struct GroupListing: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
@@ -120,6 +178,7 @@ struct GroupListing: Identifiable, Codable, Equatable {
     var desiredRoles: [PartyRole]
     var characterVibe: String
     var schedule: String
+    var availability: [AvailabilitySlot]? = nil
     var about: String
     var contact: String
     var createdAt: Date = .now
@@ -139,9 +198,37 @@ struct PartyListing: Identifiable, Codable, Equatable {
     var lookingForExperience: ExperienceLevel
     var vibe: String
     var schedule: String
+    var availability: [AvailabilitySlot]? = nil
     var about: String
     var contact: String
     var createdAt: Date = .now
+}
+
+enum OnboardingIntent: String, Codable, CaseIterable, Identifiable {
+    case dm
+    case solo
+    case duoTrio
+    case flexible
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dm: "DM"
+        case .solo: "Solo Player"
+        case .duoTrio: "Duo / Trio"
+        case .flexible: "Flexible"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .dm: "I have seats to fill."
+        case .solo: "I want to join a table."
+        case .duoTrio: "My small party needs a group."
+        case .flexible: "I want to browse both sides."
+        }
+    }
 }
 
 struct UserProfile: Identifiable, Codable, Equatable {
@@ -198,6 +285,31 @@ struct ChatThread: Identifiable, Codable, Equatable {
     var score: Int
     var summary: String
     var updatedAt: Date = .now
+}
+
+enum ChatMilestone: String, Codable, CaseIterable, Identifiable {
+    case questionsAsked
+    case sessionZeroComplete
+    case contactShared
+    case firstSessionScheduled
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .questionsAsked: "Questions asked"
+        case .sessionZeroComplete: "Session Zero complete"
+        case .contactShared: "Contact shared"
+        case .firstSessionScheduled: "First session scheduled"
+        }
+    }
+}
+
+struct ChatMilestoneRecord: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var threadID: UUID
+    var milestone: ChatMilestone
+    var completedAt: Date = .now
 }
 
 struct ChatMessage: Identifiable, Codable, Equatable {
@@ -325,4 +437,5 @@ struct Candidate<Entry: Identifiable> {
     var entry: Entry
     var score: Int
     var reasons: [String]
+    var categories: [MatchCategoryScore] = []
 }

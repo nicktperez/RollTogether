@@ -50,6 +50,14 @@ final class QuestBondStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published var onboardingIntent: OnboardingIntent {
+        didSet { save() }
+    }
+
+    @Published var milestones: [ChatMilestoneRecord] {
+        didSet { save() }
+    }
+
     @Published var groupFilters: GroupBrowseFilters {
         didSet { save() }
     }
@@ -79,6 +87,8 @@ final class QuestBondStore: ObservableObject {
             feedback = saved.feedback
             savedSearches = saved.savedSearches
             sessionZero = saved.sessionZero
+            onboardingIntent = saved.onboardingIntent
+            milestones = saved.milestones
             groupFilters = saved.groupFilters
             partyFilters = saved.partyFilters
         } else {
@@ -94,6 +104,8 @@ final class QuestBondStore: ObservableObject {
             feedback = []
             savedSearches = []
             sessionZero = SeedData.sessionZero
+            onboardingIntent = .flexible
+            milestones = []
             groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
             partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
         }
@@ -144,7 +156,7 @@ final class QuestBondStore: ObservableObject {
 
         let scoredCandidates: [Candidate<PartyListing>] = availableParties.map { party in
             let result = MatchingService.score(group: owner, party: party)
-            return Candidate(entry: party, score: result.score, reasons: result.reasons)
+            return Candidate(entry: party, score: result.score, reasons: result.reasons, categories: MatchingService.categoryScores(group: owner, party: party))
         }
 
         let filteredCandidates = scoredCandidates.filter { candidate in
@@ -176,7 +188,7 @@ final class QuestBondStore: ObservableObject {
 
         let scoredCandidates: [Candidate<GroupListing>] = availableGroups.map { group in
             let result = MatchingService.score(party: owner, group: group)
-            return Candidate(entry: group, score: result.score, reasons: result.reasons)
+            return Candidate(entry: group, score: result.score, reasons: result.reasons, categories: MatchingService.categoryScores(group: group, party: owner))
         }
 
         let filteredCandidates = scoredCandidates.filter { candidate in
@@ -268,6 +280,8 @@ final class QuestBondStore: ObservableObject {
         feedback = []
         savedSearches = []
         sessionZero = SeedData.sessionZero
+        onboardingIntent = .flexible
+        milestones = []
         groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
         partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
     }
@@ -419,6 +433,16 @@ final class QuestBondStore: ObservableObject {
         savedSearches.remove(atOffsets: offsets)
     }
 
+    func refreshGroup(_ group: GroupListing) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].createdAt = .now
+    }
+
+    func refreshParty(_ party: PartyListing) {
+        guard let index = parties.firstIndex(where: { $0.id == party.id }) else { return }
+        parties[index].createdAt = .now
+    }
+
     func submitFeedback(thread: ChatThread, sentiment: PostSessionFeedback.Sentiment, wouldPlayAgain: Bool, notes: String) {
         let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         feedback.insert(PostSessionFeedback(threadID: thread.id, sentiment: sentiment, wouldPlayAgain: wouldPlayAgain, notes: trimmed), at: 0)
@@ -430,6 +454,18 @@ final class QuestBondStore: ObservableObject {
 
     func match(for thread: ChatThread) -> MatchRecord? {
         matches.first { $0.id == thread.matchID }
+    }
+
+    func milestones(for thread: ChatThread) -> Set<ChatMilestone> {
+        Set(milestones.filter { $0.threadID == thread.id }.map(\.milestone))
+    }
+
+    func toggleMilestone(_ milestone: ChatMilestone, for thread: ChatThread) {
+        if let index = milestones.firstIndex(where: { $0.threadID == thread.id && $0.milestone == milestone }) {
+            milestones.remove(at: index)
+        } else {
+            milestones.append(ChatMilestoneRecord(threadID: thread.id, milestone: milestone))
+        }
     }
 
     func group(for thread: ChatThread) -> GroupListing? {
@@ -455,6 +491,35 @@ final class QuestBondStore: ObservableObject {
                 notes: candidate.reasons.joined(separator: " | ")
             )
         }
+    }
+
+    func inviteLink(for group: GroupListing) -> String {
+        "rolltogether://group/\(group.id.uuidString)"
+    }
+
+    func privacyExport() -> String {
+        let export = PrivacyExport(
+            exportedAt: .now,
+            profile: currentUser,
+            sessionZero: sessionZero,
+            groups: groups,
+            parties: parties,
+            matches: matches,
+            threads: threads,
+            messages: messages,
+            decisions: decisions,
+            blocks: blocks,
+            reports: reports,
+            feedback: feedback,
+            savedSearches: savedSearches,
+            milestones: milestones
+        )
+
+        guard let data = try? JSONEncoder.questBond.encode(export),
+              let text = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return text
     }
 
     private func addMatch(group: GroupListing, party: PartyListing, score: Int, initiatedBy: String) {
@@ -646,6 +711,8 @@ final class QuestBondStore: ObservableObject {
             feedback: feedback,
             savedSearches: savedSearches,
             sessionZero: sessionZero,
+            onboardingIntent: onboardingIntent,
+            milestones: milestones,
             groupFilters: groupFilters,
             partyFilters: partyFilters
         )
@@ -684,6 +751,23 @@ struct OrganizerComparisonRow: Identifiable, Equatable {
     var notes: String
 }
 
+private struct PrivacyExport: Codable {
+    var exportedAt: Date
+    var profile: UserProfile
+    var sessionZero: SessionZeroProfile
+    var groups: [GroupListing]
+    var parties: [PartyListing]
+    var matches: [MatchRecord]
+    var threads: [ChatThread]
+    var messages: [ChatMessage]
+    var decisions: [DecisionRecord]
+    var blocks: [BlockRecord]
+    var reports: [ReportRecord]
+    var feedback: [PostSessionFeedback]
+    var savedSearches: [SavedSearch]
+    var milestones: [ChatMilestoneRecord]
+}
+
 private struct PersistedState: Codable {
     var currentUser: UserProfile
     var groups: [GroupListing]
@@ -697,6 +781,8 @@ private struct PersistedState: Codable {
     var feedback: [PostSessionFeedback] = []
     var savedSearches: [SavedSearch] = []
     var sessionZero: SessionZeroProfile = SeedData.sessionZero
+    var onboardingIntent: OnboardingIntent = .flexible
+    var milestones: [ChatMilestoneRecord] = []
     var groupFilters: GroupBrowseFilters
     var partyFilters: PartyBrowseFilters
 }

@@ -50,4 +50,44 @@ final class MatchingServiceTests: XCTestCase {
         XCTAssertTrue(MatchingService.matchesQuery("seattle", values: ["Nightglass", "Seattle, WA"]))
         XCTAssertFalse(MatchingService.matchesQuery("austin", values: ["Nightglass", "Seattle, WA"]))
     }
+
+    func testWeightedCategoriesIncludeAvailabilityOverlap() {
+        let slot = AvailabilitySlot(day: .friday, window: .evening)
+        let group = GroupListing(
+            name: "Friday Table",
+            mode: .online,
+            location: "PST",
+            openSlots: 1,
+            campaignStyle: .heroic,
+            tableExperience: .new,
+            lookingForPartySize: .single,
+            desiredExperience: .new,
+            desiredRoles: [.support],
+            characterVibe: "",
+            schedule: "Friday",
+            availability: [slot],
+            about: "",
+            contact: ""
+        )
+        let party = PartyListing(
+            name: "Friday Player",
+            partySize: 1,
+            mode: .online,
+            location: "PST",
+            experience: .new,
+            rolesCovered: [.support],
+            lookingForCampaign: .heroic,
+            lookingForExperience: .new,
+            vibe: "",
+            schedule: "Friday",
+            availability: [slot],
+            about: "",
+            contact: ""
+        )
+
+        let categories = MatchingService.categoryScores(group: group, party: party)
+
+        XCTAssertEqual(categories.first(where: { $0.category == "Availability" })?.score, 10)
+        XCTAssertEqual(categories.reduce(0) { $0 + $1.score }, MatchingService.score(group: group, party: party).score)
+    }
 }

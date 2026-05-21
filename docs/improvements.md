@@ -51,16 +51,16 @@
 
 ## Next Product Improvements
 
-- Add onboarding branching so users choose DM, solo player, duo/trio, or flexible before seeing discovery.
-- Add match explainability with weighted compatibility categories instead of one total score.
-- Add availability grid input and overlap scoring.
-- Add listing expiration and stale-listing reminders.
-- Add chat milestones: questions asked, Session Zero complete, contact shared, first session scheduled.
-- Add group invite links for DMs recruiting multiple players into the same campaign.
-- Add saved-search push notification settings once Apple Push Notifications are connected.
-- Add moderation inbox views for blocked, reported, and safety-concern feedback.
+- Connect saved-search alert toggles to Apple Push Notifications once push services are live.
+- Convert local invite links into universal links after the app domain is configured.
 - Add lightweight reputation signals after multiple sessions without public star ratings.
-- Add data export before account deletion for App Store trust and privacy compliance.
+- Add an admin-only moderation review state machine: open, reviewing, actioned, dismissed.
+- Add calendar proposal objects that can become native calendar events.
+- Add image/file attachments for character sheets and table primers.
+- Add per-listing analytics: views, passes, connects, reply rate, stale warning history.
+- Add a "boost listing" placeholder for future premium experiments without enabling payments yet.
+- Add a web landing page that can resolve invite links before App Store launch.
+- Add UI tests for onboarding, availability scoring, saved searches, invite links, and privacy export.
 
 ## Engineering
 
