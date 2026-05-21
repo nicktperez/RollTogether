@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 final class QuestBondStore: ObservableObject {
     @Published var currentUser: UserProfile {
         didSet { save() }
@@ -37,6 +38,26 @@ final class QuestBondStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published var feedback: [PostSessionFeedback] {
+        didSet { save() }
+    }
+
+    @Published var savedSearches: [SavedSearch] {
+        didSet { save() }
+    }
+
+    @Published var sessionZero: SessionZeroProfile {
+        didSet { save() }
+    }
+
+    @Published var onboardingIntent: OnboardingIntent {
+        didSet { save() }
+    }
+
+    @Published var milestones: [ChatMilestoneRecord] {
+        didSet { save() }
+    }
+
     @Published var groupFilters: GroupBrowseFilters {
         didSet { save() }
     }
@@ -45,7 +66,12 @@ final class QuestBondStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published private(set) var backendStatus = "Offline local mode"
+    @Published var moderationWarning: String?
+
     private let storageKey = "questbond.native.state.v1"
+    private var repository: SupabaseQuestBondRepository?
+    private let realtime = SupabaseRealtimeService()
 
     init() {
         if let saved = Self.loadSavedState(key: storageKey) {
@@ -58,6 +84,11 @@ final class QuestBondStore: ObservableObject {
             decisions = saved.decisions
             blocks = saved.blocks
             reports = saved.reports
+            feedback = saved.feedback
+            savedSearches = saved.savedSearches
+            sessionZero = saved.sessionZero
+            onboardingIntent = saved.onboardingIntent
+            milestones = saved.milestones
             groupFilters = saved.groupFilters
             partyFilters = saved.partyFilters
         } else {
@@ -70,6 +101,11 @@ final class QuestBondStore: ObservableObject {
             decisions = []
             blocks = []
             reports = []
+            feedback = []
+            savedSearches = []
+            sessionZero = SeedData.sessionZero
+            onboardingIntent = .flexible
+            milestones = []
             groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
             partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
         }
@@ -85,6 +121,29 @@ final class QuestBondStore: ObservableObject {
         parties.first { $0.id == partyFilters.ownerID }
     }
 
+    var profileStrength: ProfileStrength {
+        var score = 0
+        var missing: [String] = []
+
+        func add(_ points: Int, when condition: Bool, missing label: String) {
+            if condition {
+                score += points
+            } else {
+                missing.append(label)
+            }
+        }
+
+        add(15, when: !currentUser.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "display name")
+        add(10, when: !currentUser.handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "handle")
+        add(15, when: !currentUser.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "location")
+        add(20, when: currentUser.bio.count >= 40, missing: "longer bio")
+        add(15, when: !currentUser.safetyNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, missing: "safety note")
+        add(15, when: !sessionZero.tone.isEmpty && !sessionZero.safetyTools.isEmpty && !sessionZero.rulesStyle.isEmpty, missing: "Session Zero answers")
+        add(10, when: !groups.isEmpty || !parties.isEmpty, missing: "at least one listing")
+
+        return ProfileStrength(score: min(score, 100), missingItems: missing)
+    }
+
     var groupBrowseCandidates: [Candidate<PartyListing>] {
         guard let owner = groupOwner else { return [] }
 
@@ -97,7 +156,7 @@ final class QuestBondStore: ObservableObject {
 
         let scoredCandidates: [Candidate<PartyListing>] = availableParties.map { party in
             let result = MatchingService.score(group: owner, party: party)
-            return Candidate(entry: party, score: result.score, reasons: result.reasons)
+            return Candidate(entry: party, score: result.score, reasons: result.reasons, categories: MatchingService.categoryScores(group: owner, party: party))
         }
 
         let filteredCandidates = scoredCandidates.filter { candidate in
@@ -108,6 +167,7 @@ final class QuestBondStore: ObservableObject {
 
             return MatchingService.matchesMode(party.mode, filter: groupFilters.postMode)
                 && campaignMatches
+                && isWithinDistance(ownerLatitude: owner.latitude, ownerLongitude: owner.longitude, targetLatitude: party.latitude, targetLongitude: party.longitude, maximumMiles: Double(groupFilters.maximumDistanceMiles))
                 && MatchingService.matchesQuery(groupFilters.query, values: [party.name, party.location, party.vibe, party.about])
         }
 
@@ -128,13 +188,14 @@ final class QuestBondStore: ObservableObject {
 
         let scoredCandidates: [Candidate<GroupListing>] = availableGroups.map { group in
             let result = MatchingService.score(party: owner, group: group)
-            return Candidate(entry: group, score: result.score, reasons: result.reasons)
+            return Candidate(entry: group, score: result.score, reasons: result.reasons, categories: MatchingService.categoryScores(group: group, party: owner))
         }
 
         let filteredCandidates = scoredCandidates.filter { candidate in
             let group = candidate.entry
             return MatchingService.matchesMode(group.mode, filter: partyFilters.postMode)
                 && MatchingService.valueMatches(requested: partyFilters.postExperience, actual: group.tableExperience)
+                && isWithinDistance(ownerLatitude: owner.latitude, ownerLongitude: owner.longitude, targetLatitude: group.latitude, targetLongitude: group.longitude, maximumMiles: Double(partyFilters.maximumDistanceMiles))
                 && MatchingService.matchesQuery(partyFilters.query, values: [group.name, group.location, group.characterVibe, group.about])
         }
 
@@ -144,20 +205,45 @@ final class QuestBondStore: ObservableObject {
     }
 
     func addGroup(_ listing: GroupListing) {
+        let moderation = ModerationService().evaluate([listing.name, listing.characterVibe, listing.about, listing.contact])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
+            return
+        }
+
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
+        }
+
         groups.insert(listing, at: 0)
         groupFilters.ownerID = listing.id
         normalizeOwners()
+        Task { await mirrorGroup(listing) }
     }
 
     func addParty(_ listing: PartyListing) {
+        let moderation = ModerationService().evaluate([listing.name, listing.vibe, listing.about, listing.contact])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This listing needs moderation before publishing."
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
+            return
+        }
+
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .listing, listingID: listing.id, result: moderation) }
+        }
+
         parties.insert(listing, at: 0)
         partyFilters.ownerID = listing.id
         normalizeOwners()
+        Task { await mirrorParty(listing) }
     }
 
     func swipeGroupCandidate(_ choice: DecisionRecord.Choice) {
         guard let owner = groupOwner, let candidate = groupBrowseCandidates.first else { return }
         decisions.append(DecisionRecord(context: .groupBrowsing, ownerID: owner.id, targetID: candidate.entry.id, choice: choice))
+        Task { await mirrorSwipe(ownerID: owner.id, targetID: candidate.entry.id, context: .groupBrowsing, choice: choice) }
 
         if choice == .connect {
             addMatch(group: owner, party: candidate.entry, score: candidate.score, initiatedBy: "group")
@@ -167,6 +253,7 @@ final class QuestBondStore: ObservableObject {
     func swipePartyCandidate(_ choice: DecisionRecord.Choice) {
         guard let owner = partyOwner, let candidate = partyBrowseCandidates.first else { return }
         decisions.append(DecisionRecord(context: .partyBrowsing, ownerID: owner.id, targetID: candidate.entry.id, choice: choice))
+        Task { await mirrorSwipe(ownerID: owner.id, targetID: candidate.entry.id, context: .partyBrowsing, choice: choice) }
 
         if choice == .connect {
             addMatch(group: candidate.entry, party: owner, score: candidate.score, initiatedBy: "party")
@@ -190,24 +277,31 @@ final class QuestBondStore: ObservableObject {
         decisions = []
         blocks = []
         reports = []
+        feedback = []
+        savedSearches = []
+        sessionZero = SeedData.sessionZero
+        onboardingIntent = .flexible
+        milestones = []
         groupFilters = GroupBrowseFilters(ownerID: SeedData.groups.first?.id)
         partyFilters = PartyBrowseFilters(ownerID: SeedData.parties.first?.id)
     }
 
     func blockMatch(in thread: ChatThread, reason: String = "Blocked from chat") {
         guard !blocks.contains(where: { $0.blockedName == thread.groupName || $0.blockedName == thread.partyName }) else { return }
-        blocks.append(BlockRecord(blockedName: "\(thread.groupName) + \(thread.partyName)", reason: reason))
+        let block = BlockRecord(blockedName: "\(thread.groupName) + \(thread.partyName)", reason: reason)
+        blocks.append(block)
+        Task { await mirrorBlock(block) }
     }
 
     func reportThread(_ thread: ChatThread, reason: String, details: String = "") {
-        reports.append(
-            ReportRecord(
-                subject: .message,
-                targetName: "\(thread.groupName) + \(thread.partyName)",
-                reason: reason,
-                details: details
-            )
+        let report = ReportRecord(
+            subject: .message,
+            targetName: "\(thread.groupName) + \(thread.partyName)",
+            reason: reason,
+            details: details
         )
+        reports.append(report)
+        Task { await mirrorReport(report) }
     }
 
     func messages(for thread: ChatThread) -> [ChatMessage] {
@@ -219,13 +313,213 @@ final class QuestBondStore: ObservableObject {
     func sendMessage(_ text: String, in thread: ChatThread) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let moderation = ModerationService().evaluate([trimmed])
+        guard moderation.canPublish else {
+            moderationWarning = moderation.reason ?? "This message needs moderation before sending."
+            Task { await mirrorModeration(subject: .message, result: moderation) }
+            return
+        }
 
-        messages.append(ChatMessage(threadID: thread.id, sender: .me, text: trimmed))
+        if moderation.status == .flagged {
+            Task { await mirrorModeration(subject: .message, result: moderation) }
+        }
+
+        let message = ChatMessage(threadID: thread.id, sender: .me, text: trimmed)
+        messages.append(message)
         touchThread(thread.id)
+        Task { await mirrorMessage(message) }
+    }
+
+    func configureBackend(accessTokenProvider: @escaping () -> String?, userIDProvider: @escaping () -> UUID?) {
+        repository = SupabaseQuestBondRepository(accessTokenProvider: accessTokenProvider, userIDProvider: userIDProvider)
+        backendStatus = "Supabase configured"
+    }
+
+    func loadBackendData() async {
+        guard let repository else { return }
+        do {
+            currentUser = try await repository.loadProfile()
+            let loaded = try await repository.loadListings()
+            if !loaded.0.isEmpty || !loaded.1.isEmpty {
+                groups = loaded.0
+                parties = loaded.1
+            }
+            backendStatus = "Synced with Supabase"
+            normalizeOwners()
+        } catch {
+            backendStatus = "Supabase sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    func registerPushToken(_ token: String?, auth: AuthSessionStore) async {
+        await auth.registerPushTokenIfNeeded(token)
+    }
+
+    func saveProfileToBackend(auth: AuthSessionStore) async {
+        guard let accessToken = auth.accessToken, let userID = auth.userID else { return }
+        do {
+            _ = try await SupabaseClient().updateProfile(currentUser.payload(userID: userID), accessToken: accessToken)
+            backendStatus = "Profile synced"
+        } catch {
+            backendStatus = "Profile sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    func subscribeToRealtime(thread: ChatThread, auth: AuthSessionStore) {
+        guard let accessToken = auth.accessToken else { return }
+        realtime.subscribeToMessages(threadID: thread.id, accessToken: accessToken) { [weak self] event in
+            guard let self else { return }
+            guard !self.messages.contains(where: { $0.id == event.id }) else { return }
+            let sender: ChatMessage.Sender = event.senderUserID == auth.userID ? .me : .match
+            self.messages.append(ChatMessage(id: event.id, threadID: event.threadID, sender: sender, text: event.body))
+            self.touchThread(event.threadID)
+            self.backendStatus = "Realtime chat active"
+        }
+    }
+
+    func disconnectRealtime() {
+        realtime.disconnect()
     }
 
     func sendPrompt(_ text: String, in thread: ChatThread) {
         sendMessage(text, in: thread)
+    }
+
+    func saveCurrentGroupSearch(named name: String? = nil) {
+        let searchName = sanitizedSearchName(name, fallback: groupOwner?.name ?? "Group Search")
+        let summary = "\(groupFilters.preMode.label), \(groupFilters.preExperience.label), \(groupFilters.maximumDistanceMiles) mi"
+        upsertSavedSearch(
+            SavedSearch(
+                name: searchName,
+                kind: .group,
+                summary: summary,
+                candidateCount: groupBrowseCandidates.count,
+                alertsEnabled: true,
+                groupFilters: groupFilters
+            )
+        )
+    }
+
+    func saveCurrentPartySearch(named name: String? = nil) {
+        let searchName = sanitizedSearchName(name, fallback: partyOwner?.name ?? "Party Search")
+        let summary = "\(partyFilters.preMode.label), \(partyFilters.preCampaign.label), \(partyFilters.maximumDistanceMiles) mi"
+        upsertSavedSearch(
+            SavedSearch(
+                name: searchName,
+                kind: .party,
+                summary: summary,
+                candidateCount: partyBrowseCandidates.count,
+                alertsEnabled: true,
+                partyFilters: partyFilters
+            )
+        )
+    }
+
+    func toggleSavedSearchAlerts(_ search: SavedSearch) {
+        guard let index = savedSearches.firstIndex(where: { $0.id == search.id }) else { return }
+        savedSearches[index].alertsEnabled.toggle()
+    }
+
+    func applySavedSearch(_ search: SavedSearch) {
+        switch search.kind {
+        case .group:
+            if let filters = search.groupFilters { groupFilters = filters }
+        case .party:
+            if let filters = search.partyFilters { partyFilters = filters }
+        }
+    }
+
+    func deleteSavedSearches(at offsets: IndexSet) {
+        savedSearches.remove(atOffsets: offsets)
+    }
+
+    func refreshGroup(_ group: GroupListing) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].createdAt = .now
+    }
+
+    func refreshParty(_ party: PartyListing) {
+        guard let index = parties.firstIndex(where: { $0.id == party.id }) else { return }
+        parties[index].createdAt = .now
+    }
+
+    func submitFeedback(thread: ChatThread, sentiment: PostSessionFeedback.Sentiment, wouldPlayAgain: Bool, notes: String) {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        feedback.insert(PostSessionFeedback(threadID: thread.id, sentiment: sentiment, wouldPlayAgain: wouldPlayAgain, notes: trimmed), at: 0)
+
+        if sentiment == .safetyConcern {
+            reportThread(thread, reason: "Post-session safety concern", details: trimmed)
+        }
+    }
+
+    func match(for thread: ChatThread) -> MatchRecord? {
+        matches.first { $0.id == thread.matchID }
+    }
+
+    func milestones(for thread: ChatThread) -> Set<ChatMilestone> {
+        Set(milestones.filter { $0.threadID == thread.id }.map(\.milestone))
+    }
+
+    func toggleMilestone(_ milestone: ChatMilestone, for thread: ChatThread) {
+        if let index = milestones.firstIndex(where: { $0.threadID == thread.id && $0.milestone == milestone }) {
+            milestones.remove(at: index)
+        } else {
+            milestones.append(ChatMilestoneRecord(threadID: thread.id, milestone: milestone))
+        }
+    }
+
+    func group(for thread: ChatThread) -> GroupListing? {
+        guard let match = match(for: thread) else { return nil }
+        return groups.first { $0.id == match.groupID }
+    }
+
+    func party(for thread: ChatThread) -> PartyListing? {
+        guard let match = match(for: thread) else { return nil }
+        return parties.first { $0.id == match.partyID }
+    }
+
+    func candidateComparisonRows() -> [OrganizerComparisonRow] {
+        groupBrowseCandidates.prefix(8).map { candidate in
+            let party = candidate.entry
+            return OrganizerComparisonRow(
+                name: party.name,
+                fitScore: candidate.score,
+                size: MatchingService.partySizeLabel(party.partySize),
+                availability: party.schedule.isEmpty ? "Flexible" : party.schedule,
+                roles: party.rolesCovered.isEmpty ? "Roles open" : party.rolesCovered.map(\.label).joined(separator: ", "),
+                mode: party.mode.label,
+                notes: candidate.reasons.joined(separator: " | ")
+            )
+        }
+    }
+
+    func inviteLink(for group: GroupListing) -> String {
+        "rolltogether://group/\(group.id.uuidString)"
+    }
+
+    func privacyExport() -> String {
+        let export = PrivacyExport(
+            exportedAt: .now,
+            profile: currentUser,
+            sessionZero: sessionZero,
+            groups: groups,
+            parties: parties,
+            matches: matches,
+            threads: threads,
+            messages: messages,
+            decisions: decisions,
+            blocks: blocks,
+            reports: reports,
+            feedback: feedback,
+            savedSearches: savedSearches,
+            milestones: milestones
+        )
+
+        guard let data = try? JSONEncoder.questBond.encode(export),
+              let text = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return text
     }
 
     private func addMatch(group: GroupListing, party: PartyListing, score: Int, initiatedBy: String) {
@@ -246,6 +540,7 @@ final class QuestBondStore: ObservableObject {
         )
 
         createThread(for: match, group: group, party: party)
+        Task { await mirrorMatchThread(group: group, party: party, score: score, localMatchID: match.id) }
     }
 
     private func createThread(for match: MatchRecord, group: GroupListing, party: PartyListing) {
@@ -276,6 +571,122 @@ final class QuestBondStore: ObservableObject {
         }
     }
 
+    private func mirrorGroup(_ listing: GroupListing) async {
+        guard let repository else { return }
+        do {
+            _ = try await repository.save(group: listing)
+            backendStatus = "Group synced"
+        } catch {
+            backendStatus = "Group sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorParty(_ listing: PartyListing) async {
+        guard let repository else { return }
+        do {
+            _ = try await repository.save(party: listing)
+            backendStatus = "Party synced"
+        } catch {
+            backendStatus = "Party sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorMessage(_ message: ChatMessage) async {
+        guard let repository else { return }
+        do {
+            try await repository.send(message: message)
+            backendStatus = "Message synced"
+        } catch {
+            backendStatus = "Message sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorReport(_ report: ReportRecord) async {
+        guard let repository else { return }
+        do {
+            try await repository.report(report)
+            backendStatus = "Report synced"
+        } catch {
+            backendStatus = "Report sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorBlock(_ block: BlockRecord) async {
+        guard let repository else { return }
+        do {
+            try await repository.block(block)
+            backendStatus = "Block synced"
+        } catch {
+            backendStatus = "Block sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorSwipe(ownerID: UUID, targetID: UUID, context: DecisionRecord.ViewContext, choice: DecisionRecord.Choice) async {
+        guard let repository else { return }
+        do {
+            try await repository.recordSwipe(ownerID: ownerID, targetID: targetID, context: context, choice: choice)
+            backendStatus = "Swipe synced"
+        } catch {
+            backendStatus = "Swipe sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorMatchThread(group: GroupListing, party: PartyListing, score: Int, localMatchID: UUID) async {
+        guard let repository else { return }
+        do {
+            let created = try await repository.createMatchThread(groupID: group.id, partyID: party.id, score: score)
+            if let matchIndex = matches.firstIndex(where: { $0.id == localMatchID }) {
+                matches[matchIndex].id = created.matchID
+            }
+            if let threadIndex = threads.firstIndex(where: { $0.matchID == localMatchID }) {
+                let oldThreadID = threads[threadIndex].id
+                threads[threadIndex].id = created.threadID
+                threads[threadIndex].matchID = created.matchID
+                messages = messages.map { message in
+                    var updated = message
+                    if updated.threadID == oldThreadID { updated.threadID = created.threadID }
+                    return updated
+                }
+            }
+            backendStatus = "Match synced"
+        } catch {
+            backendStatus = "Match sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func mirrorModeration(subject: ReportRecord.Subject, listingID: UUID? = nil, messageID: UUID? = nil, result: ModerationResult) async {
+        guard let repository else { return }
+        do {
+            try await repository.recordModeration(subject: subject, listingID: listingID, messageID: messageID, result: result)
+            backendStatus = "Moderation event synced"
+        } catch {
+            backendStatus = "Moderation sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func isWithinDistance(
+        ownerLatitude: Double?,
+        ownerLongitude: Double?,
+        targetLatitude: Double?,
+        targetLongitude: Double?,
+        maximumMiles: Double
+    ) -> Bool {
+        guard let ownerLatitude, let ownerLongitude, let targetLatitude, let targetLongitude else { return true }
+        let distance = Self.distanceMiles(fromLatitude: ownerLatitude, fromLongitude: ownerLongitude, toLatitude: targetLatitude, toLongitude: targetLongitude)
+        return distance <= maximumMiles
+    }
+
+    private static func distanceMiles(fromLatitude: Double, fromLongitude: Double, toLatitude: Double, toLongitude: Double) -> Double {
+        let earthRadiusMiles = 3958.7613
+        let lat1 = fromLatitude * .pi / 180
+        let lat2 = toLatitude * .pi / 180
+        let deltaLat = (toLatitude - fromLatitude) * .pi / 180
+        let deltaLon = (toLongitude - fromLongitude) * .pi / 180
+        let a = sin(deltaLat / 2) * sin(deltaLat / 2)
+            + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
+        return earthRadiusMiles * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+
     private func normalizeOwners() {
         if groupFilters.ownerID == nil || !groups.contains(where: { $0.id == groupFilters.ownerID }) {
             groupFilters.ownerID = groups.first?.id
@@ -297,6 +708,11 @@ final class QuestBondStore: ObservableObject {
             decisions: decisions,
             blocks: blocks,
             reports: reports,
+            feedback: feedback,
+            savedSearches: savedSearches,
+            sessionZero: sessionZero,
+            onboardingIntent: onboardingIntent,
+            milestones: milestones,
             groupFilters: groupFilters,
             partyFilters: partyFilters
         )
@@ -310,6 +726,46 @@ final class QuestBondStore: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder.questBond.decode(PersistedState.self, from: data)
     }
+
+    private func upsertSavedSearch(_ search: SavedSearch) {
+        savedSearches.removeAll { existing in
+            existing.kind == search.kind && existing.name.localizedCaseInsensitiveCompare(search.name) == .orderedSame
+        }
+        savedSearches.insert(search, at: 0)
+    }
+
+    private func sanitizedSearchName(_ name: String?, fallback: String) -> String {
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+}
+
+struct OrganizerComparisonRow: Identifiable, Equatable {
+    var id: String { name + availability + roles }
+    var name: String
+    var fitScore: Int
+    var size: String
+    var availability: String
+    var roles: String
+    var mode: String
+    var notes: String
+}
+
+private struct PrivacyExport: Codable {
+    var exportedAt: Date
+    var profile: UserProfile
+    var sessionZero: SessionZeroProfile
+    var groups: [GroupListing]
+    var parties: [PartyListing]
+    var matches: [MatchRecord]
+    var threads: [ChatThread]
+    var messages: [ChatMessage]
+    var decisions: [DecisionRecord]
+    var blocks: [BlockRecord]
+    var reports: [ReportRecord]
+    var feedback: [PostSessionFeedback]
+    var savedSearches: [SavedSearch]
+    var milestones: [ChatMilestoneRecord]
 }
 
 private struct PersistedState: Codable {
@@ -322,6 +778,11 @@ private struct PersistedState: Codable {
     var decisions: [DecisionRecord]
     var blocks: [BlockRecord] = []
     var reports: [ReportRecord] = []
+    var feedback: [PostSessionFeedback] = []
+    var savedSearches: [SavedSearch] = []
+    var sessionZero: SessionZeroProfile = SeedData.sessionZero
+    var onboardingIntent: OnboardingIntent = .flexible
+    var milestones: [ChatMilestoneRecord] = []
     var groupFilters: GroupBrowseFilters
     var partyFilters: PartyBrowseFilters
 }

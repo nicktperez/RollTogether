@@ -5,11 +5,15 @@ enum SeedData {
         displayName: "Nick",
         handle: "@questmaker",
         location: "Los Angeles, CA",
+        latitude: 34.0522,
+        longitude: -118.2437,
         bio: "Looking for thoughtful tables, reliable schedules, and players who enjoy story as much as dice.",
         favoriteRole: .support,
         preferredMode: .hybrid,
         safetyNote: "Session Zero first, clear expectations, and respectful table culture."
     )
+
+    static let sessionZero = SessionZeroProfile()
 
     static let groups: [GroupListing] = [
         GroupListing(
@@ -118,4 +122,3 @@ enum SeedData {
         )
     ]
 }
-

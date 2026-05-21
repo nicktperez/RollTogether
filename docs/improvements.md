@@ -13,6 +13,8 @@
 
 ## Matching
 
+- Add a guided search builder that starts with "I have seats to fill" vs "I want a table" and stores multiple active searches per user.
+- Add a Session Zero compatibility quiz covering tone, safety tools, scheduling discipline, homebrew tolerance, and rules strictness.
 - Add availability windows instead of free-text schedules.
 - Add MapKit or location autocomplete for in-person discovery. Initial app-side autocomplete is scaffolded.
 - Add distance filtering for in-person games. Initial app-side distance controls are scaffolded; true filtering needs geocoded coordinates in the backend.
@@ -21,25 +23,44 @@
 - Add safety and comfort tags: Session Zero, lines/veils, beginner-friendly, LGBTQ+ friendly.
 - Add platform tags: Discord, Roll20, Foundry, Owlbear Rodeo, D&D Beyond.
 - Add saved searches and match alerts.
+- Add a map/list hybrid discovery mode for in-person games once backend coordinates are live.
 
 ## Chat
 
 - Add unread counts and read receipts.
 - Add typing indicators after Realtime is connected.
+- Add profile and listing summary cards at the top of every new match thread so both sides have context before asking questions.
 - Add Session Zero templates.
 - Add share-contact cards for Discord/email only after both sides opt in.
 - Add calendar proposal messages.
 - Add image attachments for character sheets or campaign primers.
+- Add message prompts for common questions: schedule, table rules, safety boundaries, VTT platform, and campaign expectations.
 
 ## Product
 
 - Add onboarding quiz.
+- Add a profile strength meter with concrete next actions before allowing broad discovery.
 - Add profile/listing preview before publishing.
 - Add draft listings.
 - Add searchable listing directory separate from swipe discovery.
 - Add Apple Push Notifications for new matches, new messages, and listing interest.
 - Add premium features later: boosts, advanced filters, extra active listings.
 - Add RevenueCat when subscriptions become part of the product.
+- Add an organizer dashboard for DMs to compare applicants by role, availability, experience, and safety preferences.
+- Add post-session feedback that is private by default and only escalates serious safety issues into moderation.
+
+## Next Product Improvements
+
+- Connect saved-search alert toggles to Apple Push Notifications once push services are live.
+- Convert local invite links into universal links after the app domain is configured.
+- Add lightweight reputation signals after multiple sessions without public star ratings.
+- Add an admin-only moderation review state machine: open, reviewing, actioned, dismissed.
+- Add calendar proposal objects that can become native calendar events.
+- Add image/file attachments for character sheets and table primers.
+- Add per-listing analytics: views, passes, connects, reply rate, stale warning history.
+- Add a "boost listing" placeholder for future premium experiments without enabling payments yet.
+- Add a web landing page that can resolve invite links before App Store launch.
+- Add UI tests for onboarding, availability scoring, saved searches, invite links, and privacy export.
 
 ## Engineering
 
@@ -48,5 +69,6 @@
 - Add UI tests for create, connect, chat, and persistence flows.
 - Add Supabase repositories behind protocols so local mock data remains available.
 - Add Supabase Auth implementation once project URL and publishable key are available.
+- Keep Supabase Swift for Realtime channel management instead of maintaining a custom WebSocket protocol client.
 - Add crash reporting with Sentry before external testing.
 - Add a real asset catalog app icon set before TestFlight.

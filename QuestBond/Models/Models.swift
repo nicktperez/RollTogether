@@ -105,11 +105,71 @@ enum PartyRole: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AvailabilityDay: String, Codable, CaseIterable, Identifiable {
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+
+    var id: String { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .monday: "Mon"
+        case .tuesday: "Tue"
+        case .wednesday: "Wed"
+        case .thursday: "Thu"
+        case .friday: "Fri"
+        case .saturday: "Sat"
+        case .sunday: "Sun"
+        }
+    }
+}
+
+enum AvailabilityWindow: String, Codable, CaseIterable, Identifiable {
+    case morning
+    case afternoon
+    case evening
+    case lateNight
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .morning: "Morning"
+        case .afternoon: "Afternoon"
+        case .evening: "Evening"
+        case .lateNight: "Late"
+        }
+    }
+}
+
+struct AvailabilitySlot: Identifiable, Codable, Hashable {
+    var day: AvailabilityDay
+    var window: AvailabilityWindow
+
+    var id: String { "\(day.rawValue)-\(window.rawValue)" }
+    var label: String { "\(day.shortLabel) \(window.label)" }
+}
+
+struct MatchCategoryScore: Identifiable, Codable, Equatable {
+    var id: String { category }
+    var category: String
+    var score: Int
+    var weight: Int
+    var note: String
+}
+
 struct GroupListing: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
     var mode: SessionMode
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var openSlots: Int
     var campaignStyle: CampaignStyle
     var tableExperience: ExperienceLevel
@@ -118,6 +178,7 @@ struct GroupListing: Identifiable, Codable, Equatable {
     var desiredRoles: [PartyRole]
     var characterVibe: String
     var schedule: String
+    var availability: [AvailabilitySlot]? = nil
     var about: String
     var contact: String
     var createdAt: Date = .now
@@ -129,15 +190,45 @@ struct PartyListing: Identifiable, Codable, Equatable {
     var partySize: Int
     var mode: SessionMode
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var experience: ExperienceLevel
     var rolesCovered: [PartyRole]
     var lookingForCampaign: CampaignStyle
     var lookingForExperience: ExperienceLevel
     var vibe: String
     var schedule: String
+    var availability: [AvailabilitySlot]? = nil
     var about: String
     var contact: String
     var createdAt: Date = .now
+}
+
+enum OnboardingIntent: String, Codable, CaseIterable, Identifiable {
+    case dm
+    case solo
+    case duoTrio
+    case flexible
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dm: "DM"
+        case .solo: "Solo Player"
+        case .duoTrio: "Duo / Trio"
+        case .flexible: "Flexible"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .dm: "I have seats to fill."
+        case .solo: "I want to join a table."
+        case .duoTrio: "My small party needs a group."
+        case .flexible: "I want to browse both sides."
+        }
+    }
 }
 
 struct UserProfile: Identifiable, Codable, Equatable {
@@ -145,10 +236,34 @@ struct UserProfile: Identifiable, Codable, Equatable {
     var displayName: String
     var handle: String
     var location: String
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     var bio: String
     var favoriteRole: PartyRole
     var preferredMode: SessionMode
     var safetyNote: String
+}
+
+struct SessionZeroProfile: Codable, Equatable {
+    var tone = "Heroic with room for drama"
+    var safetyTools = "Session Zero, lines and veils, open door"
+    var rulesStyle = "Rules-aware, story-forward"
+    var homebrewComfort = "Ask first"
+    var scheduleReliability = "Weekly if the table commits"
+    var contactBoundary = "Chat first, share Discord after mutual fit"
+}
+
+struct ProfileStrength: Equatable {
+    var score: Int
+    var missingItems: [String]
+
+    var label: String {
+        switch score {
+        case 90...100: "Ready for discovery"
+        case 65..<90: "Almost ready"
+        default: "Needs detail"
+        }
+    }
 }
 
 struct MatchRecord: Identifiable, Codable, Equatable {
@@ -170,6 +285,31 @@ struct ChatThread: Identifiable, Codable, Equatable {
     var score: Int
     var summary: String
     var updatedAt: Date = .now
+}
+
+enum ChatMilestone: String, Codable, CaseIterable, Identifiable {
+    case questionsAsked
+    case sessionZeroComplete
+    case contactShared
+    case firstSessionScheduled
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .questionsAsked: "Questions asked"
+        case .sessionZeroComplete: "Session Zero complete"
+        case .contactShared: "Contact shared"
+        case .firstSessionScheduled: "First session scheduled"
+        }
+    }
+}
+
+struct ChatMilestoneRecord: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var threadID: UUID
+    var milestone: ChatMilestone
+    var completedAt: Date = .now
 }
 
 struct ChatMessage: Identifiable, Codable, Equatable {
@@ -205,6 +345,33 @@ struct ReportRecord: Identifiable, Codable, Equatable {
     var targetName: String
     var reason: String
     var details: String
+    var createdAt: Date = .now
+}
+
+struct PostSessionFeedback: Identifiable, Codable, Equatable {
+    enum Sentiment: String, Codable, CaseIterable, Identifiable {
+        case greatFit
+        case okayFit
+        case notAFit
+        case safetyConcern
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .greatFit: "Great fit"
+            case .okayFit: "Okay fit"
+            case .notAFit: "Not a fit"
+            case .safetyConcern: "Safety concern"
+            }
+        }
+    }
+
+    var id = UUID()
+    var threadID: UUID
+    var sentiment: Sentiment
+    var wouldPlayAgain: Bool
+    var notes: String
     var createdAt: Date = .now
 }
 
@@ -249,8 +416,26 @@ struct PartyBrowseFilters: Codable, Equatable {
     var query = ""
 }
 
+struct SavedSearch: Identifiable, Codable, Equatable {
+    enum SearchKind: String, Codable {
+        case group
+        case party
+    }
+
+    var id = UUID()
+    var name: String
+    var kind: SearchKind
+    var summary: String
+    var candidateCount: Int
+    var alertsEnabled: Bool
+    var createdAt: Date = .now
+    var groupFilters: GroupBrowseFilters?
+    var partyFilters: PartyBrowseFilters?
+}
+
 struct Candidate<Entry: Identifiable> {
     var entry: Entry
     var score: Int
     var reasons: [String]
+    var categories: [MatchCategoryScore] = []
 }

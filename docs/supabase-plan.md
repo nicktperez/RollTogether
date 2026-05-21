@@ -1,169 +1,64 @@
 # Supabase Backend Plan
 
-This app should stay local-first for prototyping, then move the social layer to Supabase when a project is available.
+QuestBond now uses Supabase as the primary production backend for account identity, social data, messaging persistence, notification queues, and safety records.
 
-## Recommended Services
+## Connected Project
 
-- Supabase Auth for email, Apple Sign-In, and Google Sign-In.
-- Postgres for profiles, listings, swipes, matches, chat threads, messages, reports, and blocks.
-- Supabase Realtime private channels for live chat updates.
-- Supabase Storage for profile photos, party banners, and listing images.
-- Edge Functions for push notifications, moderation hooks, and match-created side effects.
-- Apple Push Notification service for match/message alerts.
+- Project name: `RollTogether`
+- Project ref: `mczhglpdsoiipdqsbjsl`
+- iOS config: `QuestBond/Config/SupabaseConfig.swift`
+- Client implementation: `QuestBond/Services/SupabaseClient.swift`
 
-## Also Useful
+## Applied Migrations
 
-- Apple Push Notifications: new match and message alerts.
-- MapKit or location autocomplete: in-person group discovery.
-- OpenAI moderation or similar: message/profile safety checks.
-- Sentry: crash/error tracking.
-- RevenueCat: subscriptions later, if premium filters or boosts are added.
-- Cloudflare Turnstile or similar abuse protection: useful if spam becomes an issue.
+1. `20260514220659_initial_rolltogether_schema`: creates the initial profiles, listings, listing roles, swipes, matches, message threads, messages, reports, blocks, notifications, and push tokens tables with RLS enabled.
+2. `20260514220732_advisor_security_and_index_fixes`: revokes public execution on the generated RLS helper and adds missing foreign-key indexes.
+3. `20260520160032_production_runtime_support`: enables realtime publication for messaging/match/notification tables, adds thread timestamp triggers, notification queue triggers, account deletion requests, and nearby listing search.
+4. `20260520160959_account_deletion_index`: adds the account deletion request foreign-key index flagged by the Supabase performance advisor.
 
-Supabase docs checked for this plan:
+Local migration files live in `supabase/migrations/`.
 
-- Realtime private channels and Swift client usage: https://supabase.com/docs/guides/realtime/getting_started
-- Realtime authorization/RLS for private channels: https://supabase.com/docs/guides/realtime/authorization
-- Product security index: https://supabase.com/docs/guides/security/product-security
+## Edge Functions
 
-## Tables
+1. `delete-account`: authenticated function that validates the bearer token, writes an account deletion request, and deletes the Supabase Auth user through the service-role admin API.
+2. `send-push-notifications`: authenticated function that reads pending notification rows, signs APNs JWTs, sends alert pushes, and marks notifications delivered. It requires APNs environment secrets before delivery will run.
+3. `moderate-content`: authenticated moderation function that uses OpenAI moderation when `OPENAI_API_KEY` is configured, with a keyword fallback for development.
+4. `create-match-thread`: authenticated server-side function that validates listing ownership, creates/upserts the match, and creates/upserts the chat thread with the service role.
 
-```sql
-create type public.listing_kind as enum ('group', 'party');
-create type public.session_mode as enum ('online', 'in_person', 'hybrid');
-create type public.experience_level as enum ('new', 'intermediate', 'veteran');
-create type public.swipe_choice as enum ('pass', 'connect');
+Local function source lives in `supabase/functions/`.
 
-create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  display_name text not null,
-  handle text unique,
-  location_text text,
-  bio text,
-  preferred_mode public.session_mode,
-  favorite_role text,
-  safety_note text,
-  avatar_path text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+## Implemented Client Wiring
 
--- Supabase Auth's auth.users table is the source of truth for account identity.
--- The public.profiles row stores public/social profile fields for each auth user.
-
-create table public.listings (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references public.profiles(id) on delete cascade,
-  kind public.listing_kind not null,
-  title text not null,
-  session_mode public.session_mode not null,
-  location_text text,
-  schedule_text text,
-  party_size int,
-  open_slots int,
-  campaign_style text,
-  experience public.experience_level,
-  looking_for text,
-  vibe text,
-  about text,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table public.listing_roles (
-  listing_id uuid not null references public.listings(id) on delete cascade,
-  role text not null,
-  role_kind text not null check (role_kind in ('covered', 'wanted')),
-  primary key (listing_id, role, role_kind)
-);
-
-create table public.swipes (
-  id uuid primary key default gen_random_uuid(),
-  actor_id uuid not null references public.profiles(id) on delete cascade,
-  source_listing_id uuid not null references public.listings(id) on delete cascade,
-  target_listing_id uuid not null references public.listings(id) on delete cascade,
-  choice public.swipe_choice not null,
-  created_at timestamptz not null default now(),
-  unique (actor_id, source_listing_id, target_listing_id)
-);
-
-create table public.matches (
-  id uuid primary key default gen_random_uuid(),
-  group_listing_id uuid not null references public.listings(id) on delete cascade,
-  party_listing_id uuid not null references public.listings(id) on delete cascade,
-  score int not null check (score between 0 and 100),
-  created_at timestamptz not null default now(),
-  unique (group_listing_id, party_listing_id)
-);
-
-create table public.chat_threads (
-  id uuid primary key default gen_random_uuid(),
-  match_id uuid not null unique references public.matches(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table public.messages (
-  id uuid primary key default gen_random_uuid(),
-  thread_id uuid not null references public.chat_threads(id) on delete cascade,
-  sender_id uuid not null references public.profiles(id) on delete cascade,
-  body text not null check (char_length(body) between 1 and 4000),
-  created_at timestamptz not null default now(),
-  edited_at timestamptz
-);
-
-create table public.blocks (
-  blocker_id uuid not null references public.profiles(id) on delete cascade,
-  blocked_id uuid not null references public.profiles(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  primary key (blocker_id, blocked_id)
-);
-
-create table public.reports (
-  id uuid primary key default gen_random_uuid(),
-  reporter_id uuid not null references public.profiles(id) on delete cascade,
-  reported_profile_id uuid references public.profiles(id) on delete set null,
-  message_id uuid references public.messages(id) on delete set null,
-  reason text not null,
-  details text,
-  created_at timestamptz not null default now()
-);
-
-create table public.notifications (
-  id uuid primary key default gen_random_uuid(),
-  recipient_id uuid not null references public.profiles(id) on delete cascade,
-  kind text not null check (kind in ('new_match', 'new_message', 'listing_interest', 'system')),
-  title text not null,
-  body text not null,
-  payload jsonb not null default '{}'::jsonb,
-  sent_at timestamptz,
-  read_at timestamptz,
-  created_at timestamptz not null default now()
-);
-```
+1. `AuthSessionStore` handles email/password signup, signin, password recovery, session persistence, sign out, delete account, and APNs token upload once a session exists.
+2. `SupabaseQuestBondRepository` mirrors profile, listing, swipe, message, report, and block actions into Supabase.
+3. `QuestBondStore` loads backend profile/listings when signed in and keeps local seed/offline data available for development fallback.
+4. Listing and profile location fields geocode selected suggestions into coordinates.
+5. Discovery can filter locally loaded coordinate-backed listings by miles.
+6. Message and listing text pass through a local moderation preflight before being saved or sent.
 
 ## RLS Policy Shape
 
-Enable RLS on every public table.
+RLS is enabled on public tables.
 
-- `profiles`: authenticated users can read public profile fields; users can update only their own profile.
-- `listings`: anyone authenticated can read active listings; owners can insert/update/delete their own listings.
-- `swipes`: users can insert/read only their own swipes.
-- `matches`: users can read matches where they own either listing.
-- `chat_threads`: users can read threads attached to their matches.
-- `messages`: users can read/send messages only in threads attached to their matches.
-- `blocks`: users can manage only their own block rows.
-- `reports`: users can create reports; only admins/moderators read all reports.
-- `notifications`: users can read/update only their own notifications; Edge Functions insert/send notifications.
+- `profiles`: users manage their own profile and can read social profile fields.
+- `listings`: authenticated users can read active listings; owners can manage their own listings.
+- `listing_roles`: follows listing ownership/read access.
+- `swipes`: users can create and read their own swipe decisions.
+- `matches`: visible to users who own either listing.
+- `message_threads`: visible to participants through match ownership.
+- `messages`: users can read/send only inside authorized match threads.
+- `reports`: users can create reports; moderator review tooling is still needed.
+- `blocks`: users manage their own block records.
+- `notifications`: users can read/update their own notification rows; server-side functions process delivery.
+- `account_deletion_requests`: users can create/read their own deletion requests.
 
-For Realtime, use private channels named `thread:<thread_id>:messages`, and authorize access against thread membership. Avoid broad policies on `realtime.messages` in production.
+## Production Follow-Up
 
-## Client Integration Steps
-
-1. Add `supabase-swift` to the Xcode project.
-2. Store the Supabase URL and publishable key in a local config file excluded from git.
-3. Add Auth screens and replace the local `currentUser` with the authenticated profile.
-4. Replace `QuestBondStore` persistence calls with repository methods backed by Supabase.
-5. Subscribe to private Realtime channels only while a chat thread is open.
-6. Use Edge Functions for push notifications and automated match/thread creation.
+1. Configure Apple Sign-In provider values in Supabase and Apple Developer.
+2. Configure APNs Edge Function secrets: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRIVATE_KEY`, and `APNS_USE_SANDBOX`.
+3. Configure `OPENAI_API_KEY` for production moderation.
+4. Run real-device tests for APNs and Sign in with Apple because simulator/local signing cannot prove those external services.
+5. Consider replacing the lightweight custom realtime socket with `supabase-swift` before scale testing if you want maintained protocol handling.
+6. Add Supabase Storage policies for avatars and listing media.
+7. Add admin-only report review and audit tooling.
+8. Keep running Supabase advisors after schema changes and before every external release.

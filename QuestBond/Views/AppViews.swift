@@ -1,35 +1,165 @@
+import AuthenticationServices
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @EnvironmentObject private var store: QuestBondStore
     @AppStorage("questbond.hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
-        TabView {
-            DiscoverView()
-                .tabItem {
-                    Label("Discover", systemImage: "rectangle.stack.person.crop")
-                }
+        Group {
+            if auth.isAuthenticated {
+                TabView {
+                    DiscoverView()
+                        .tabItem {
+                            Label("Discover", systemImage: "rectangle.stack.person.crop")
+                        }
 
-            ChatsView()
-                .tabItem {
-                    Label("Chats", systemImage: "bubble.left.and.bubble.right")
-                }
+                    ChatsView()
+                        .tabItem {
+                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                        }
 
-            MoreView(hasCompletedOnboarding: $hasCompletedOnboarding)
-                .tabItem {
-                    Label("More", systemImage: "ellipsis")
+                    MoreView(hasCompletedOnboarding: $hasCompletedOnboarding)
+                        .tabItem {
+                            Label("More", systemImage: "ellipsis")
+                        }
                 }
-        }
-        .tint(.questPrimary)
-        .fullScreenCover(isPresented: Binding(get: { !hasCompletedOnboarding }, set: { hasCompletedOnboarding = !$0 })) {
-            OnboardingView {
-                hasCompletedOnboarding = true
+                .tint(.questPrimary)
+                .fullScreenCover(isPresented: Binding(get: { !hasCompletedOnboarding }, set: { hasCompletedOnboarding = !$0 })) {
+                    OnboardingView {
+                        hasCompletedOnboarding = true
+                    }
+                }
+                .task(id: auth.accessToken) {
+                    store.configureBackend(accessTokenProvider: { auth.accessToken }, userIDProvider: { auth.userID })
+                    await store.loadBackendData()
+                    await store.registerPushToken(NotificationRegistrationService.shared.deviceToken, auth: auth)
+                }
+            } else {
+                AuthView()
             }
+        }
+        .alert("Moderation", isPresented: Binding(get: { store.moderationWarning != nil }, set: { if !$0 { store.moderationWarning = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(store.moderationWarning ?? "")
+        }
+    }
+}
+
+struct AuthView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var email = ""
+    @State private var password = ""
+    @State private var displayName = ""
+    @State private var isCreatingAccount = false
+
+    var body: some View {
+        ZStack {
+            QuestBackground()
+
+            VStack(spacing: 20) {
+                Spacer()
+
+                Image("QuestBondMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 112)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.questBrass.opacity(0.65), lineWidth: 1))
+
+                VStack(spacing: 8) {
+                    Text("RollTogether")
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(Color.questParchment)
+                    Text("Sign in to sync listings, matches, chats, reports, and notifications.")
+                        .font(.body)
+                        .foregroundStyle(Color.questMutedText)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 12) {
+                    if isCreatingAccount {
+                        TextField("Display name", text: $displayName)
+                            .textContentType(.name)
+                            .textInputAutocapitalization(.words)
+                    }
+
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    SecureField("Password", text: $password)
+                        .textContentType(isCreatingAccount ? .newPassword : .password)
+                }
+                .textFieldStyle(.roundedBorder)
+
+                if let lastError = auth.lastError {
+                    Text(lastError)
+                        .font(.footnote)
+                        .foregroundStyle(lastError.contains("requested") ? Color.questBrass : .red)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button {
+                    Task {
+                        if isCreatingAccount {
+                            await auth.signUp(email: email, password: password, displayName: displayName.isEmpty ? "New Adventurer" : displayName)
+                        } else {
+                            await auth.signIn(email: email, password: password)
+                        }
+                    }
+                } label: {
+                    Text(auth.isWorking ? "Working..." : (isCreatingAccount ? "Create Account" : "Sign In"))
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.questBrass)
+                .foregroundStyle(Color.questInk)
+                .disabled(auth.isWorking || email.isEmpty || password.count < 6)
+
+                Button {
+                    Task { await auth.signInWithApple() }
+                } label: {
+                    Label("Sign in with Apple", systemImage: "apple.logo")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.black)
+                .foregroundStyle(.white)
+                .disabled(auth.isWorking)
+
+                HStack {
+                    Button(isCreatingAccount ? "Have an account? Sign in" : "Create account") {
+                        isCreatingAccount.toggle()
+                    }
+
+                    Spacer()
+
+                    Button("Reset password") {
+                        Task { await auth.recoverPassword(email: email) }
+                    }
+                    .disabled(email.isEmpty)
+                }
+                .font(.footnote)
+                .foregroundStyle(Color.questBrass)
+
+                Spacer()
+            }
+            .padding(24)
         }
     }
 }
 
 struct OnboardingView: View {
+    @EnvironmentObject private var store: QuestBondStore
     var complete: () -> Void
 
     var body: some View {
@@ -66,6 +196,9 @@ struct OnboardingView: View {
                     OnboardingPoint(icon: "plus.circle", title: "Start another search", text: "Use + for different roles, schedules, or styles.")
                     OnboardingPoint(icon: "bubble.left.and.bubble.right", title: "Chat after connecting", text: "Ask Session Zero questions first.")
                 }
+
+                OnboardingIntentPicker(selection: $store.onboardingIntent)
+                SessionZeroCompactEditor(profile: $store.sessionZero)
 
                 Spacer()
 
@@ -118,6 +251,70 @@ struct OnboardingPoint: View {
     }
 }
 
+struct SessionZeroCompactEditor: View {
+    @Binding var profile: SessionZeroProfile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Session Zero Fit", systemImage: "shield.lefthalf.filled")
+                .font(.headline)
+                .foregroundStyle(Color.questParchment)
+
+            TextField("Tone", text: $profile.tone)
+                .textFieldStyle(.roundedBorder)
+            TextField("Safety tools", text: $profile.safetyTools)
+                .textFieldStyle(.roundedBorder)
+            TextField("Rules style", text: $profile.rulesStyle)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(14)
+        .background(Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questBrass.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
+struct OnboardingIntentPicker: View {
+    @Binding var selection: OnboardingIntent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What are you here to do?")
+                .font(.headline)
+                .foregroundStyle(Color.questParchment)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(OnboardingIntent.allCases) { intent in
+                    Button {
+                        selection = intent
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(intent.label)
+                                .font(.subheadline.bold())
+                            Text(intent.detail)
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(selection == intent ? Color.questBrass : Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(selection == intent ? Color.questInk : Color.questParchment)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questBrass.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
 struct DiscoverView: View {
     enum Mode: String, CaseIterable, Identifiable {
         case groupsBrowse = "Groups Browse"
@@ -136,6 +333,7 @@ struct DiscoverView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         BrandHero()
+                        ProfileStrengthCard()
                         StatsStrip()
 
                         Picker("Browse Mode", selection: $mode) {
@@ -313,6 +511,7 @@ struct PartyBrowsingView: View {
 
 struct GroupBrowseFilterForm: View {
     @EnvironmentObject private var store: QuestBondStore
+    @State private var saved = false
 
     var body: some View {
         FilterPanel(title: "Group Search") {
@@ -344,12 +543,22 @@ struct GroupBrowseFilterForm: View {
 
             TextField("Search name, location, vibe", text: $store.groupFilters.query)
                 .textInputAutocapitalization(.words)
+
+            Button {
+                store.saveCurrentGroupSearch()
+                saved = true
+            } label: {
+                Label(saved ? "Saved Search" : "Save Search + Alerts", systemImage: saved ? "checkmark.circle.fill" : "bell.badge")
+            }
+            .buttonStyle(.bordered)
+            .tint(.questPrimary)
         }
     }
 }
 
 struct PartyBrowseFilterForm: View {
     @EnvironmentObject private var store: QuestBondStore
+    @State private var saved = false
 
     var body: some View {
         FilterPanel(title: "Party Search") {
@@ -381,6 +590,15 @@ struct PartyBrowseFilterForm: View {
 
             TextField("Search name, location, style", text: $store.partyFilters.query)
                 .textInputAutocapitalization(.words)
+
+            Button {
+                store.saveCurrentPartySearch()
+                saved = true
+            } label: {
+                Label(saved ? "Saved Search" : "Save Search + Alerts", systemImage: saved ? "checkmark.circle.fill" : "bell.badge")
+            }
+            .buttonStyle(.bordered)
+            .tint(.questPrimary)
         }
     }
 }
@@ -427,6 +645,7 @@ struct GroupCandidateCard: View {
             DescriptionBlock(text: group.characterVibe)
             DescriptionBlock(text: group.about)
             ReasonList(reasons: candidate.reasons)
+            MatchBreakdown(categories: candidate.categories)
             ContactLine(contact: group.contact)
         }
     }
@@ -450,7 +669,36 @@ struct PartyCandidateCard: View {
             DescriptionBlock(text: party.vibe)
             DescriptionBlock(text: party.about)
             ReasonList(reasons: candidate.reasons)
+            MatchBreakdown(categories: candidate.categories)
             ContactLine(contact: party.contact)
+        }
+    }
+}
+
+struct MatchBreakdown: View {
+    var categories: [MatchCategoryScore]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Why this score")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            ForEach(categories) { category in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(category.category)
+                        Spacer()
+                        Text("\(category.score)/\(category.weight)")
+                            .monospacedDigit()
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    ProgressView(value: Double(category.score), total: Double(category.weight))
+                        .tint(category.score == 0 ? .questDanger : .questPrimary)
+                }
+            }
         }
     }
 }
@@ -670,6 +918,40 @@ struct ChatsView: View {
     }
 }
 
+struct ProfileStrengthCard: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        let strength = store.profileStrength
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(strength.label, systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.headline)
+                    .foregroundStyle(Color.questParchment)
+                Spacer()
+                Text("\(strength.score)%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(Color.questBrass)
+            }
+
+            ProgressView(value: Double(strength.score), total: 100)
+                .tint(.questBrass)
+
+            if !strength.missingItems.isEmpty {
+                Text("Add \(strength.missingItems.prefix(3).joined(separator: ", ")) to improve match trust.")
+                    .font(.caption)
+                    .foregroundStyle(Color.questMutedText)
+            }
+        }
+        .padding(14)
+        .background(Color.questGlass, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questBrass.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
 struct ChatThreadRow: View {
     var thread: ChatThread
     var lastMessage: ChatMessage?
@@ -705,9 +987,11 @@ struct ChatThreadRow: View {
 
 struct ChatDetailView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
     var thread: ChatThread
     @State private var draft = ""
     @State private var showingReport = false
+    @State private var showingFeedback = false
     @State private var showingBlockConfirmation = false
 
     private var activeThread: ChatThread {
@@ -717,9 +1001,11 @@ struct ChatDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             MatchContextHeader(thread: activeThread)
+            ChatMilestoneStrip(thread: activeThread)
 
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    MatchContextCards(thread: activeThread)
                     ForEach(store.messages(for: activeThread)) { message in
                         ChatBubble(message: message)
                     }
@@ -749,6 +1035,12 @@ struct ChatDetailView: View {
         }
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            store.subscribeToRealtime(thread: activeThread, auth: auth)
+        }
+        .onDisappear {
+            store.disconnectRealtime()
+        }
         .toolbar {
             Menu {
                 Button(role: .destructive) {
@@ -762,12 +1054,21 @@ struct ChatDetailView: View {
                 } label: {
                     Label("Block", systemImage: "nosign")
                 }
+
+                Button {
+                    showingFeedback = true
+                } label: {
+                    Label("Post-Session Feedback", systemImage: "checklist")
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
         }
         .sheet(isPresented: $showingReport) {
             ReportThreadView(thread: activeThread)
+        }
+        .sheet(isPresented: $showingFeedback) {
+            PostSessionFeedbackView(thread: activeThread)
         }
         .alert("Block this match?", isPresented: $showingBlockConfirmation) {
             Button("Block", role: .destructive) {
@@ -776,6 +1077,141 @@ struct ChatDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This adds the match to your local blocked list. Backend enforcement will sync when Supabase is connected.")
+        }
+    }
+}
+
+struct ChatMilestoneStrip: View {
+    @EnvironmentObject private var store: QuestBondStore
+    var thread: ChatThread
+
+    var body: some View {
+        let completed = store.milestones(for: thread)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ChatMilestone.allCases) { milestone in
+                    Button {
+                        store.toggleMilestone(milestone, for: thread)
+                    } label: {
+                        Label(milestone.label, systemImage: completed.contains(milestone) ? "checkmark.circle.fill" : "circle")
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(completed.contains(milestone) ? .questSuccess : .questPrimary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+        .background(Color.questSurface)
+    }
+}
+
+struct MatchContextCards: View {
+    @EnvironmentObject private var store: QuestBondStore
+    var thread: ChatThread
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let group = store.group(for: thread) {
+                ContextCard(
+                    title: group.name,
+                    subtitle: "Table looking for \(group.openSlots) player\(group.openSlots == 1 ? "" : "s")",
+                    tags: [group.mode.label, group.campaignStyle.label, group.schedule],
+                    detail: group.about.isEmpty ? group.characterVibe : group.about
+                )
+            }
+
+            if let party = store.party(for: thread) {
+                ContextCard(
+                    title: party.name,
+                    subtitle: "\(MatchingService.partySizeLabel(party.partySize)) looking for a table",
+                    tags: [party.mode.label, party.experience.label, party.schedule],
+                    detail: party.about.isEmpty ? party.vibe : party.about
+                )
+            }
+
+            ContextCard(
+                title: "Session Zero Notes",
+                subtitle: "Use this before sharing outside contact info",
+                tags: [store.sessionZero.tone, store.sessionZero.rulesStyle],
+                detail: store.sessionZero.safetyTools
+            )
+        }
+    }
+}
+
+struct ContextCard: View {
+    var title: String
+    var subtitle: String
+    var tags: [String]
+    var detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TagCloud(tags: tags.filter { !$0.isEmpty })
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.questSurface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.questLine, lineWidth: 1)
+        )
+    }
+}
+
+struct PostSessionFeedbackView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: QuestBondStore
+    var thread: ChatThread
+    @State private var sentiment: PostSessionFeedback.Sentiment = .greatFit
+    @State private var wouldPlayAgain = true
+    @State private var notes = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("How did it go?") {
+                    Picker("Fit", selection: $sentiment) {
+                        ForEach(PostSessionFeedback.Sentiment.allCases) { sentiment in
+                            Text(sentiment.label).tag(sentiment)
+                        }
+                    }
+                    Toggle("Would play again", isOn: $wouldPlayAgain)
+                }
+
+                Section("Private Notes") {
+                    TextField("What should you remember?", text: $notes, axis: .vertical)
+                        .lineLimit(3...7)
+                    Text("Safety concerns also create a local report so moderation can sync later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Table Feedback")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        store.submitFeedback(thread: thread, sentiment: sentiment, wouldPlayAgain: wouldPlayAgain, notes: notes)
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }
@@ -943,9 +1379,10 @@ struct CreateGroupView: View {
                     Picker("Session", selection: $draft.mode) {
                         ForEach([SessionMode.online, .inPerson, .hybrid]) { Text($0.label).tag($0) }
                     }
-                    LocationField(title: "Location or time zone", text: $draft.location)
+                    LocationField(title: "Location or time zone", text: $draft.location, latitude: $draft.latitude, longitude: $draft.longitude)
                     Stepper("Open slots: \(draft.openSlots)", value: $draft.openSlots, in: 1...8)
                     TextField("Schedule", text: $draft.schedule)
+                    AvailabilityGrid(selection: $draft.availability)
                 }
 
                 Section("Table Fit") {
@@ -996,8 +1433,9 @@ struct CreatePartyView: View {
                     Picker("Session", selection: $draft.mode) {
                         ForEach([SessionMode.online, .inPerson, .hybrid]) { Text($0.label).tag($0) }
                     }
-                    LocationField(title: "Location or time zone", text: $draft.location)
+                    LocationField(title: "Location or time zone", text: $draft.location, latitude: $draft.latitude, longitude: $draft.longitude)
                     TextField("Schedule", text: $draft.schedule)
+                    AvailabilityGrid(selection: $draft.availability)
                 }
 
                 Section("Looking For") {
@@ -1036,6 +1474,8 @@ struct GroupDraft {
     var name = ""
     var mode: SessionMode = .online
     var location = ""
+    var latitude: Double?
+    var longitude: Double?
     var openSlots = 1
     var campaignStyle: CampaignStyle = .heroic
     var tableExperience: ExperienceLevel = .new
@@ -1044,6 +1484,7 @@ struct GroupDraft {
     var desiredRoles: [PartyRole] = []
     var characterVibe = ""
     var schedule = ""
+    var availability: [AvailabilitySlot] = []
     var about = ""
     var contact = ""
 
@@ -1056,6 +1497,8 @@ struct GroupDraft {
             name: name,
             mode: mode,
             location: location,
+            latitude: latitude,
+            longitude: longitude,
             openSlots: openSlots,
             campaignStyle: campaignStyle,
             tableExperience: tableExperience,
@@ -1064,6 +1507,7 @@ struct GroupDraft {
             desiredRoles: desiredRoles,
             characterVibe: characterVibe,
             schedule: schedule,
+            availability: availability,
             about: about,
             contact: contact
         )
@@ -1075,12 +1519,15 @@ struct PartyDraft {
     var partySize = 1
     var mode: SessionMode = .online
     var location = ""
+    var latitude: Double?
+    var longitude: Double?
     var experience: ExperienceLevel = .new
     var rolesCovered: [PartyRole] = []
     var lookingForCampaign: CampaignStyle = .any
     var lookingForExperience: ExperienceLevel = .any
     var vibe = ""
     var schedule = ""
+    var availability: [AvailabilitySlot] = []
     var about = ""
     var contact = ""
 
@@ -1094,15 +1541,58 @@ struct PartyDraft {
             partySize: partySize,
             mode: mode,
             location: location,
+            latitude: latitude,
+            longitude: longitude,
             experience: experience,
             rolesCovered: rolesCovered,
             lookingForCampaign: lookingForCampaign,
             lookingForExperience: lookingForExperience,
             vibe: vibe,
             schedule: schedule,
+            availability: availability,
             about: about,
             contact: contact
         )
+    }
+}
+
+struct AvailabilityGrid: View {
+    @Binding var selection: [AvailabilitySlot]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Availability")
+                .font(.subheadline.bold())
+            ForEach(AvailabilityDay.allCases) { day in
+                HStack {
+                    Text(day.shortLabel)
+                        .font(.caption.bold())
+                        .frame(width: 34, alignment: .leading)
+                    ForEach(AvailabilityWindow.allCases) { window in
+                        let slot = AvailabilitySlot(day: day, window: window)
+                        Button {
+                            toggle(slot)
+                        } label: {
+                            Text(window.label.prefix(1))
+                                .font(.caption.bold())
+                                .frame(width: 28, height: 28)
+                                .background(selection.contains(slot) ? Color.questPrimary : Color.questTag, in: Circle())
+                                .foregroundStyle(selection.contains(slot) ? .white : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(day.shortLabel) \(window.label)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggle(_ slot: AvailabilitySlot) {
+        if selection.contains(slot) {
+            selection.removeAll { $0 == slot }
+        } else {
+            selection.append(slot)
+        }
     }
 }
 
@@ -1136,6 +1626,8 @@ struct RoleSelection: View {
 struct LocationField: View {
     var title: String
     @Binding var text: String
+    @Binding var latitude: Double?
+    @Binding var longitude: Double?
     @StateObject private var search = LocationSearchService()
 
     var body: some View {
@@ -1150,6 +1642,12 @@ struct LocationField: View {
                     Button {
                         text = suggestion
                         search.query = ""
+                        Task {
+                            if let coordinate = await search.geocode(suggestion) {
+                                latitude = coordinate.latitude
+                                longitude = coordinate.longitude
+                            }
+                        }
                     } label: {
                         Label(suggestion, systemImage: "mappin.and.ellipse")
                             .font(.caption)
@@ -1157,6 +1655,12 @@ struct LocationField: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                 }
+            }
+
+            if let latitude, let longitude {
+                Text("Coordinates saved: \(latitude.formatted(.number.precision(.fractionLength(3)))), \(longitude.formatted(.number.precision(.fractionLength(3))))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -1186,36 +1690,65 @@ struct ListingsView: View {
 }
 
 struct GroupListingRow: View {
+    @EnvironmentObject private var store: QuestBondStore
     var group: GroupListing
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(group.name)
-                .font(.headline)
+            HStack {
+                Text(group.name)
+                    .font(.headline)
+                Spacer()
+                Text(MatchingService.listingFreshnessLabel(createdAt: group.createdAt))
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+            }
             Text("\(group.mode.label) | \(group.openSlots) open | \(group.campaignStyle.label)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text(group.about.isEmpty ? group.characterVibe : group.about)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            HStack {
+                Button("Refresh") {
+                    store.refreshGroup(group)
+                }
+                .buttonStyle(.bordered)
+
+                ShareLink(item: store.inviteLink(for: group)) {
+                    Label("Invite Link", systemImage: "link")
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding(.vertical, 4)
     }
 }
 
 struct PartyListingRow: View {
+    @EnvironmentObject private var store: QuestBondStore
     var party: PartyListing
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(party.name)
-                .font(.headline)
+            HStack {
+                Text(party.name)
+                    .font(.headline)
+                Spacer()
+                Text(MatchingService.listingFreshnessLabel(createdAt: party.createdAt))
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+            }
             Text("\(MatchingService.partySizeLabel(party.partySize)) | \(party.mode.label) | \(party.experience.label)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text(party.about.isEmpty ? party.vibe : party.about)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button("Refresh") {
+                store.refreshParty(party)
+            }
+            .buttonStyle(.bordered)
         }
         .padding(.vertical, 4)
     }
@@ -1258,8 +1791,10 @@ struct MatchesView: View {
 
 struct MoreView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
     @Binding var hasCompletedOnboarding: Bool
     @State private var confirmingDelete = false
+    @State private var deleteReason = "User requested deletion from iOS app"
 
     var body: some View {
         NavigationStack {
@@ -1278,6 +1813,11 @@ struct MoreView: View {
                             Text(store.currentUser.handle)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                            if let email = auth.email {
+                                Text(email)
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
@@ -1315,9 +1855,43 @@ struct MoreView: View {
                     } label: {
                         Label("Matches", systemImage: "link")
                     }
+
+                    NavigationLink {
+                        SavedSearchesView()
+                    } label: {
+                        Label("Saved Searches & Alerts", systemImage: "bell.badge")
+                    }
+
+                    NavigationLink {
+                        OrganizerDashboardView()
+                    } label: {
+                        Label("DM Organizer Dashboard", systemImage: "tablecells")
+                    }
+
+                    NavigationLink {
+                        FeedbackHistoryView()
+                    } label: {
+                        Label("Post-Session Feedback", systemImage: "checklist")
+                    }
+
+                    NavigationLink {
+                        ModerationInboxView()
+                    } label: {
+                        Label("Moderation Inbox", systemImage: "exclamationmark.shield")
+                    }
+
+                    NavigationLink {
+                        PrivacyExportView()
+                    } label: {
+                        Label("Privacy Export", systemImage: "doc.text")
+                    }
                 }
 
                 Section("Backend Readiness") {
+                    Text(store.backendStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     BackendStatusView()
 
                     NavigationLink {
@@ -1336,6 +1910,12 @@ struct MoreView: View {
                 }
 
                 Section("Account") {
+                    Button {
+                        auth.signOut()
+                    } label: {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+
                     Button(role: .destructive) {
                         confirmingDelete = true
                     } label: {
@@ -1344,14 +1924,18 @@ struct MoreView: View {
                 }
             }
             .navigationTitle("More")
-            .alert("Delete local account?", isPresented: $confirmingDelete) {
-                Button("Delete", role: .destructive) {
-                    store.deleteLocalAccount()
-                    hasCompletedOnboarding = false
+            .alert("Delete account?", isPresented: $confirmingDelete) {
+                TextField("Reason optional", text: $deleteReason)
+                Button("Delete Everywhere", role: .destructive) {
+                    Task {
+                        await auth.deleteAccount(reason: deleteReason)
+                        store.deleteLocalAccount()
+                        hasCompletedOnboarding = false
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This removes local profile data, listings, matches, chats, and decisions from this device. Backend deletion will be wired when Supabase auth is connected.")
+                Text("This requests backend account deletion through Supabase, then clears local profile data, listings, matches, chats, and decisions from this device.")
             }
         }
     }
@@ -1478,6 +2062,7 @@ struct RoadmapRow: View {
 
 struct ProfileView: View {
     @EnvironmentObject private var store: QuestBondStore
+    @EnvironmentObject private var auth: AuthSessionStore
 
     var body: some View {
         NavigationStack {
@@ -1502,7 +2087,12 @@ struct ProfileView: View {
                 }
 
                 Section("Profile") {
-                    TextField("Location", text: $store.currentUser.location)
+                    LocationField(
+                        title: "Location",
+                        text: $store.currentUser.location,
+                        latitude: $store.currentUser.latitude,
+                        longitude: $store.currentUser.longitude
+                    )
                     TextField("Bio", text: $store.currentUser.bio, axis: .vertical)
                         .lineLimit(2...5)
                     Picker("Favorite role", selection: $store.currentUser.favoriteRole) {
@@ -1522,14 +2112,283 @@ struct ProfileView: View {
                         .lineLimit(2...5)
                 }
 
+                Section("Session Zero Compatibility") {
+                    TextField("Tone", text: $store.sessionZero.tone)
+                    TextField("Safety tools", text: $store.sessionZero.safetyTools, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("Rules style", text: $store.sessionZero.rulesStyle)
+                    TextField("Homebrew comfort", text: $store.sessionZero.homebrewComfort)
+                    TextField("Schedule reliability", text: $store.sessionZero.scheduleReliability)
+                    TextField("Contact boundary", text: $store.sessionZero.contactBoundary)
+                }
+
+                Section("Profile Strength") {
+                    let strength = store.profileStrength
+                    HStack {
+                        Text(strength.label)
+                        Spacer()
+                        Text("\(strength.score)%")
+                            .monospacedDigit()
+                            .foregroundStyle(Color.questPrimary)
+                    }
+                    ProgressView(value: Double(strength.score), total: 100)
+                    if !strength.missingItems.isEmpty {
+                        Text("Missing: \(strength.missingItems.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Sync") {
+                    Button {
+                        Task { await store.saveProfileToBackend(auth: auth) }
+                    } label: {
+                        Label("Save Profile to Supabase", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+
                 Section("Social Roadmap") {
                     Label("Private chat is created after connecting.", systemImage: "bubble.left.and.bubble.right")
                     Label("Public contact info stays hidden by default.", systemImage: "lock")
-                    Label("Reports, blocks, and account auth belong in the backend phase.", systemImage: "shield")
+                    Label("Reports, blocks, and account auth now sync through Supabase.", systemImage: "shield")
                 }
             }
             .navigationTitle("Profile")
         }
+    }
+}
+
+struct SavedSearchesView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            if store.savedSearches.isEmpty {
+                ContentUnavailableView("No saved searches", systemImage: "bell.badge", description: Text("Save filters from Discover to get ready for match alerts."))
+            } else {
+                ForEach(store.savedSearches) { search in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(search.name)
+                                    .font(.headline)
+                                Text(search.kind == .group ? "Finding players" : "Finding groups")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(search.candidateCount)")
+                                .font(.headline.monospacedDigit())
+                                .foregroundStyle(Color.questPrimary)
+                        }
+
+                        Text(search.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Button {
+                                store.applySavedSearch(search)
+                            } label: {
+                                Label("Apply", systemImage: "line.3.horizontal.decrease.circle")
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                store.toggleSavedSearchAlerts(search)
+                            } label: {
+                                Label(search.alertsEnabled ? "Alerts On" : "Alerts Off", systemImage: search.alertsEnabled ? "bell.fill" : "bell.slash")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(search.alertsEnabled ? .questPrimary : .secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onDelete(perform: store.deleteSavedSearches)
+            }
+        }
+        .navigationTitle("Saved Searches")
+    }
+}
+
+struct OrganizerDashboardView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            Section {
+                if let group = store.groupOwner {
+                    Text("Recruiting for: \(group.name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Use Group Search filters to rank singles, duos, trios, and full parties by role coverage, schedule, mode, and fit score.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Top Player/Party Candidates") {
+                let rows = store.candidateComparisonRows()
+                if rows.isEmpty {
+                    ContentUnavailableView("No candidates", systemImage: "tablecells", description: Text("Adjust Group Search filters or add more listings."))
+                } else {
+                    ForEach(rows) { row in
+                        OrganizerComparisonRowView(row: row)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Organizer")
+    }
+}
+
+struct OrganizerComparisonRowView: View {
+    var row: OrganizerComparisonRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(row.name)
+                    .font(.headline)
+                Spacer()
+                Text("\(row.fitScore)%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(Color.questPrimary)
+            }
+            TagCloud(tags: [row.size, row.mode, row.availability, row.roles])
+            if !row.notes.isEmpty {
+                Text(row.notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct FeedbackHistoryView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            if store.feedback.isEmpty {
+                ContentUnavailableView("No feedback yet", systemImage: "checklist", description: Text("After a session, save private fit notes from the chat menu."))
+            } else {
+                ForEach(store.feedback) { feedback in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(feedback.sentiment.label)
+                            .font(.headline)
+                        Text(feedback.wouldPlayAgain ? "Would play again" : "Would not play again")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if !feedback.notes.isEmpty {
+                            Text(feedback.notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(feedback.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle("Feedback")
+    }
+}
+
+struct ModerationInboxView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        List {
+            Section("Reports") {
+                if store.reports.isEmpty {
+                    Text("No reports.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.reports) { report in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(report.reason)
+                                .font(.headline)
+                            Text(report.targetName)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            if !report.details.isEmpty {
+                                Text(report.details)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Blocks") {
+                if store.blocks.isEmpty {
+                    Text("No blocks.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.blocks) { block in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(block.blockedName)
+                                .font(.headline)
+                            Text(block.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section("Safety Feedback") {
+                let safetyFeedback = store.feedback.filter { $0.sentiment == .safetyConcern }
+                if safetyFeedback.isEmpty {
+                    Text("No safety feedback.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(safetyFeedback) { feedback in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(feedback.sentiment.label)
+                                .font(.headline)
+                            Text(feedback.notes.isEmpty ? "No notes provided." : feedback.notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Moderation")
+    }
+}
+
+struct PrivacyExportView: View {
+    @EnvironmentObject private var store: QuestBondStore
+
+    var body: some View {
+        let export = store.privacyExport()
+        List {
+            Section {
+                Text("This local export includes profile, listings, matches, chats, decisions, blocks, reports, saved searches, milestones, and feedback currently stored on this device.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ShareLink(item: export) {
+                    Label("Share Export JSON", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            Section("Preview") {
+                Text(export)
+                    .font(.caption.monospaced())
+                    .lineLimit(20)
+                    .textSelection(.enabled)
+            }
+        }
+        .navigationTitle("Privacy Export")
     }
 }
 
