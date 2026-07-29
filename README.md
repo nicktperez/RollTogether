@@ -1,89 +1,72 @@
 # QuestBond
 
-QuestBond is a native SwiftUI iOS app for matching DND groups with singles, duos, trios, and larger player parties.
+QuestBond is a native SwiftUI iOS app for matching D&D groups with solo players and existing parties. The repository is currently named `RollTogether`; QuestBond is the product name shown in the app.
 
-## Current App
+## Project status
 
-- Native iOS project: [QuestBond.xcodeproj](/Users/nickperez/DND%20App/QuestBond.xcodeproj)
-- App source: [QuestBondApp.swift](/Users/nickperez/DND%20App/QuestBond/QuestBondApp.swift)
-- Bundle ID: `com.nickperez.questbond`
-- Minimum iOS target: `17.0`
+The core discovery, matching, chat, profile, and filter experiences are implemented. The primary UX still uses local seed data while authenticated Supabase-backed screens are being completed.
 
-## Features
+## Highlights
 
-- Browse groups looking for players.
-- Browse player parties looking for groups.
-- Pre-search and post-search filters for session type, campaign style, table experience, party size, open slots, and text search.
-- Online, in-person, and hybrid session support.
-- Fit scoring with match reasons.
-- Pass and connect actions.
-- Saved connections that open private chat threads.
-- Chat inbox with match context, message composer, and Session Zero prompt chips.
-- Editable local profile.
-- First-run onboarding that explains discovery, new searches, and chat.
-- Main navigation focused on `Discover`, `Chats`, and `More`.
-- Floating plus action on Discover for starting a new group/player search setup.
-- Local delete-account action in `More`.
-- Block/report actions from matched chats.
-- MapKit-backed location autocomplete scaffolding and distance filter controls.
-- APNs registration scaffolding for future match/message notifications.
-- Supabase-ready auth/repository protocols for the backend migration.
-- Unit tests for matching and filter behavior.
-- Full iOS app icon set generated from the QuestBond mark.
-- Native forms for group and party listings.
-- Local persistence using `UserDefaults`.
-- Generated brand mark/theme asset in the Xcode asset catalog.
+- Browse groups looking for players and parties looking for groups
+- Online, in-person, and hybrid session support
+- Filters for campaign style, experience, party size, open slots, distance, and text search
+- Fit scoring with human-readable match reasons
+- Pass, connect, saved match, and private chat flows
+- Session Zero prompt chips and match context in conversations
+- Editable local profile and first-run onboarding
+- Block, report, and local account-deletion actions
+- MapKit location autocomplete scaffolding
+- APNs registration scaffolding
+- Unit tests for matching and filter behavior
 
-## Backend Planning
+## Technology
 
-- [Supabase backend plan](</Users/nickperez/DND App/docs/supabase-plan.md>)
-- [Improvement backlog](</Users/nickperez/DND App/docs/improvements.md>)
+- SwiftUI
+- MapKit
+- UserDefaults for current local persistence
+- Supabase Auth, Postgres, Realtime, Storage, and Edge Functions
+- Native Xcode unit tests
 
-Firebase is not required for the current direction. Supabase covers the main needs for this app: Auth, Postgres data, private Realtime chat, Storage, and Edge Functions. Firebase would mainly be an alternative stack, not an additional requirement.
+## Repository layout
 
-## Screenshot Checklist Coverage
+- [QuestBond.xcodeproj](QuestBond.xcodeproj) — native Xcode project
+- [QuestBondApp.swift](QuestBond/QuestBondApp.swift) — application entry point
+- [Supabase backend plan](docs/supabase-plan.md)
+- [Improvement backlog](docs/improvements.md)
+- [Static web prototype](index.html)
 
-The app now includes an in-app `More > Services & Data Model` checklist for:
+## Run locally
 
-- Apple Push Notifications
-- MapKit / location autocomplete
-- OpenAI moderation
-- Sentry
-- RevenueCat
-- Cloudflare Turnstile
-- users
-- profiles
-- listings
-- listing_roles
-- swipes
-- matches
-- messages
-- message_threads
-- reports
-- blocks
-- notifications
+Requirements:
 
-## Run
+- Xcode with an iOS 17 or newer simulator
+- macOS capable of running the selected Xcode version
 
-Open [QuestBond.xcodeproj](/Users/nickperez/DND%20App/QuestBond.xcodeproj) in Xcode, select the `QuestBond` scheme, and run on an iOS simulator.
+Open [QuestBond.xcodeproj](QuestBond.xcodeproj), select the `QuestBond` scheme, choose an iOS simulator, and run the project.
 
-The previous static web prototype files are still present for reference:
+## Supabase integration
 
-- [index.html](/Users/nickperez/DND%20App/index.html)
-- [app.js](/Users/nickperez/DND%20App/app.js)
-- [styles.css](/Users/nickperez/DND%20App/styles.css)
+The app connects through `QuestBond/Config/SupabaseConfig.swift` and a lightweight URLSession client in `QuestBond/Services/SupabaseClient.swift`.
 
-## Supabase Connection
+Applied migrations:
 
-The iOS app is connected to the Supabase project `mczhglpdsoiipdqsbjsl` (`RollTogether`) through `QuestBond/Config/SupabaseConfig.swift` and a lightweight URLSession client in `QuestBond/Services/SupabaseClient.swift`.
+- `20260514220659_initial_rolltogether_schema` creates profiles, listings, roles, swipes, matches, message threads, messages, reports, blocks, notifications, and push tokens with row-level security enabled.
+- `20260514220732_advisor_security_and_index_fixes` revokes public execution on the Supabase-created helper and adds foreign-key indexes flagged by the advisors.
 
-Applied backend migrations:
+The committed Supabase publishable key is intended for client use. Access control depends on correctly configured row-level security policies; privileged service-role keys must never be embedded in the app.
 
-- `20260514220659_initial_rolltogether_schema`: creates profiles, listings, roles, swipes, matches, message threads, messages, reports, blocks, notifications, and push tokens with RLS enabled.
-- `20260514220732_advisor_security_and_index_fixes`: revokes public execution on the Supabase-created `rls_auto_enable()` helper and adds foreign-key indexes flagged by advisors.
+## Current limitations
 
-Current status:
+- Main screens still use local seed data.
+- Push notification delivery is scaffolded but not presented as production-ready.
+- External moderation, analytics, payments, and operational monitoring are planning items rather than completed production integrations.
+- The repository does not yet include final App Store assets or a public release build.
 
-- Supabase Auth/REST plumbing is present.
-- The app still uses local seed data for the main UX until the next pass wires screens directly to authenticated Supabase sessions.
-- Security advisors are clean; performance advisors only report unused indexes because the database is empty.
+## Previous prototype
+
+The earlier static prototype remains available for reference:
+
+- [index.html](index.html)
+- [app.js](app.js)
+- [styles.css](styles.css)
